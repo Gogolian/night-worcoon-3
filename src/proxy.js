@@ -57,6 +57,7 @@ function forwardManual({ config, reqMethod, reqPath, reqHeaders, reqBody }) {
       method: reqMethod,
       path: targetPath || '/',
       headers: outHeaders,
+      rejectUnauthorized: config.secure !== false ? true : false,
     };
 
     const lib = isHttps ? https : http;
