@@ -105,6 +105,7 @@ export async function startProxy({ config, configDir, logger, pluginsDir }) {
     target: config.target,
     changeOrigin: !!config.changeOrigin,
     ws: true,
+    secure: config.secure !== false,
   });
   wsProxy.on('error', (err) => logger.error(`ws proxy error: ${err.message}`));
 
