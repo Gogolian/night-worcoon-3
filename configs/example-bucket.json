@@ -1,0 +1,43 @@
+{
+  "name": "bucket-demo",
+  "port": 8090,
+  "target": "https://httpbin.org",
+  "changeOrigin": true,
+
+  "plugins": ["bucket", "mock", "recorder"],
+
+  "storage": {
+    "type": "fs",
+    "path": "./recordings/bucket-demo"
+  },
+
+  "bucket": {
+    "persistPath": "./recordings/bucket-demo-state.json",
+    "collections": [
+      {
+        "path": "/api/users",
+        "idPattern": "numeric"
+      },
+      {
+        "path": "/api/sessions",
+        "idPattern": "uuid",
+        "responseTemplate": {
+          "session": "{{id}}",
+          "user": "{{user}}"
+        }
+      },
+      {
+        "path": "/api/tokens",
+        "idPattern": "regex:[A-Z]{4}-\\d{4}"
+      }
+    ]
+  },
+
+  "mock": {
+    "rules": [
+      { "method": "*", "urlContains": "/debug", "action": "PASS" }
+    ]
+  },
+
+  "recorder": { "recordAll": false }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "httpbin",
+  "port": 8080,
+  "target": "https://httpbin.org",
+  "requestHeaders": {
+    "X-Forwarded-By": "night-worcoon-3"
+  },
+  "changeOrigin": true,
+  "followRedirects": false,
+  "plugins": ["mock", "recorder"],
+  "storage": {
+    "type": "fs",
+    "path": "./recordings/httpbin"
+  },
+  "mock": {
+    "rules": [
+      {
+        "method": "GET",
+        "url": "/mock/hello",
+        "action": "MOCK",
+        "response": {
+          "status": 200,
+          "headers": { "content-type": "application/json" },
+          "body": { "message": "hello from night-worcoon-3" }
+        }
+      },
+      {
+        "method": "GET",
+        "url": "/users/:id",
+        "action": "RET_REC",
+        "fallback": "PASS"
+      }
+    ]
+  },
+  "recorder": {
+    "recordAll": false
+  }
+}

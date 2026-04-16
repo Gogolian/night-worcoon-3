@@ -1,0 +1,6 @@
+node_modules/
+recordings/
+*.sqlite
+*.sqlite-journal
+*.db
+.DS_Store

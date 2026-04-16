@@ -1,0 +1,22 @@
+{
+  "name": "example-sqlite",
+  "port": 8081,
+  "target": "https://example.com",
+  "requestHeaders": {},
+  "changeOrigin": true,
+  "followRedirects": true,
+  "plugins": ["mock", "recorder"],
+  "storage": {
+    "type": "sqlite",
+    "path": "./recordings/example-sqlite.db"
+  },
+  "mock": {
+    "rules": [
+      { "method": "*", "urlContains": "/health", "action": "MOCK",
+        "response": { "status": 200, "body": { "ok": true } } }
+    ]
+  },
+  "recorder": {
+    "recordAll": false
+  }
+}
