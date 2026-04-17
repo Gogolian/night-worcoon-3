@@ -50,6 +50,7 @@ async function runHeadless() {
 async function runTui() {
   createTui({
     configsDir,
+    pluginsDir,
     logger,
     onStart: async (config) => {
       return startProxy({ config, configDir: rootDir, logger, pluginsDir });
