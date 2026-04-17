@@ -12,7 +12,7 @@ function levelColor(l) {
     case 'error': return 'red';
     case 'warn': return 'yellow';
     case 'info': return 'cyan';
-    case 'debug': return 'gray';
+    case 'debug': return 'white';
     default: return 'white';
   }
 }
@@ -51,7 +51,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     top: 1, left: 0, right: 0, height: 3,
     border: 'line',
     tags: true,
-    style: { border: { fg: 'gray' } },
+    style: { border: { fg: 'cyan' } },
   });
 
   function renderTabBar() {
@@ -61,7 +61,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         return `{blue-bg}{white-fg}{bold} ${name} {/}`;
       if (i === tabIdx)
         return `{white-fg}{bold}[${name}]{/}`;
-      return `{gray-fg} ${name} {/}`;
+      return `{white-fg} ${name} {/}`;
     });
     tabBar.setContent(' ' + segs.join('  '));
     screen.render();
@@ -91,7 +91,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   const help = blessed.box({
     parent: screen,
     bottom: 0, left: 0, right: 0, height: 1,
-    style: { bg: 'gray', fg: 'black' },
+    style: { bg: 'white', fg: 'black' },
     content: '',
   });
 
@@ -121,7 +121,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     style: {
       selected: { bg: 'blue', fg: 'white', bold: true },
       item: { fg: 'white' },
-      border: { fg: 'gray' },
+      border: { fg: 'cyan' },
     },
   });
 
@@ -135,7 +135,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     top: 0, left: 0, right: 0, height: 3,
     border: 'line',
     tags: true,
-    style: { border: { fg: 'gray' } },
+    style: { border: { fg: 'cyan' } },
     content: '',
   });
 
@@ -149,7 +149,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     style: {
       selected: { bg: 'blue', fg: 'white', bold: true },
       item: { fg: 'white' },
-      border: { fg: 'gray' },
+      border: { fg: 'cyan' },
     },
   });
 
@@ -230,8 +230,8 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       ? `{${color}-bg}{white-fg}{bold}${label}{/}`
       : `{${color}-fg}{bold}${label}{/}`;
     const sub = entry?.config
-      ? `  {gray-fg}${entry.config.name || entry.file}  :${entry.config.port} → ${entry.config.target}{/}`
-      : '  {gray-fg}(no valid config){/}';
+      ? `  {white-fg}${entry.config.name || entry.file}  :${entry.config.port} → ${entry.config.target}{/}`
+      : '  {white-fg}(no valid config){/}';
     startBtn.setContent(' ' + marker + sub);
 
     optionRows = buildOptionRows(entry?.config);
@@ -260,9 +260,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     border: 'line',
     tags: true,
     scrollback: 5000,
-    scrollbar: { ch: ' ', style: { bg: 'gray' } },
+    scrollbar: { ch: ' ', style: { bg: 'cyan' } },
     mouse: true, keys: false,
-    style: { border: { fg: 'gray' } },
+    style: { border: { fg: 'cyan' } },
   });
 
   // =====================================================
@@ -278,7 +278,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     style: {
       selected: { bg: 'blue', fg: 'white', bold: true },
       item: { fg: 'white' },
-      border: { fg: 'gray' },
+      border: { fg: 'cyan' },
     },
   });
 
@@ -314,7 +314,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     style: {
       selected: { bg: 'blue', fg: 'white', bold: true },
       item: { fg: 'white' },
-      border: { fg: 'gray' },
+      border: { fg: 'cyan' },
     },
   });
 
@@ -332,7 +332,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     pluginsBox.setItems(files.map((f) => {
       const name = f.replace(/\.js$/, '');
       const on = enabled.has(name);
-      return ` ${on ? '{green-fg}●{/}' : '{gray-fg}○{/}'}  ${name}${on ? '  {gray-fg}(enabled){/}' : ''}`;
+      return ` ${on ? '{green-fg}●{/}' : '{white-fg}○{/}'}  ${name}${on ? '  {cyan-fg}(enabled){/}' : ''}`;
     }));
   }
 
@@ -612,7 +612,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         parent: box,
         top: 0, left: 1, right: 1, height: 1,
         content: multiline ? 'edit JSON · [Ctrl-S] save  [Esc] cancel' : '[Enter] save   [Esc] cancel',
-        style: { fg: 'gray' },
+        style: { fg: 'white' },
       });
       const input = (multiline ? blessed.textarea : blessed.textbox)({
         parent: box,
@@ -707,7 +707,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         parent: box,
         top: 0, left: 1, right: 1, height: 1,
         content: '[↑/↓] pick  [enter] edit  [a] add  [d] delete  [Esc] close',
-        style: { fg: 'gray' },
+        style: { fg: 'white' },
       });
       const list = blessed.list({
         parent: box,
@@ -785,7 +785,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   // =====================================================
   logger.on('log', (e) => {
     const color = levelColor(e.level);
-    logBox.log(`{gray-fg}${fmtTs(e.ts)}{/} {${color}-fg}${e.level.padEnd(5)}{/} ${e.msg}`);
+    logBox.log(`{cyan-fg}${fmtTs(e.ts)}{/} {${color}-fg}${e.level.padEnd(5)}{/} ${e.msg}`);
   });
 
   logger.on('trace', (e) => {
@@ -793,10 +793,10 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       const d = e.data;
       const c = d.status >= 500 ? 'red' : d.status >= 400 ? 'yellow' : 'green';
       logBox.log(
-        `{gray-fg}${fmtTs(e.ts)}{/} {${c}-fg}${String(d.status).padEnd(3)}{/} ${d.method.padEnd(6)} ${d.url}  {gray-fg}(${d.source}, ${d.ms}ms){/}`,
+        `{cyan-fg}${fmtTs(e.ts)}{/} {${c}-fg}${String(d.status).padEnd(3)}{/} ${d.method.padEnd(6)} ${d.url}  {white-fg}(${d.source}, ${d.ms}ms){/}`,
       );
     } else if (e.kind === 'ws-upgrade') {
-      logBox.log(`{gray-fg}${fmtTs(e.ts)}{/} {magenta-fg}WS   {/} upgrade ${e.data.url}`);
+      logBox.log(`{cyan-fg}${fmtTs(e.ts)}{/} {magenta-fg}WS   {/} upgrade ${e.data.url}`);
     }
   });
 
