@@ -718,7 +718,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         input.on('submit', () => cleanup(input.getValue()));
         input.on('cancel', () => cleanup(null));
       }
-      input.focus();
+      setImmediate(() => { if (!done) input.focus(); });
       screen.render();
     });
   }
@@ -804,7 +804,12 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
           renderButtons(); return;
         }
       };
-      screen.on('keypress', keyHandler);
+      // Defer listener attachment so the Enter keypress that opened this
+      // popup doesn't immediately trigger its own confirm handler.
+      setImmediate(() => {
+        if (done) return;
+        screen.on('keypress', keyHandler);
+      });
 
       renderButtons();
       screen.render();
@@ -977,7 +982,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       nameInput.on('cancel', () => cleanup(null));
       valueInput.on('cancel', () => cleanup(null));
 
-      nameInput.focus();
+      // Defer focus so the Enter that opened the form isn't captured
+      // by nameInput's readInput (which would submit it immediately).
+      setImmediate(() => { if (!done) nameInput.focus(); });
       screen.render();
     });
   }
@@ -1034,9 +1041,13 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         resolve();
       };
 
+      let armed = false;
+      setImmediate(() => { armed = true; });
+
       list.key('escape', cleanup);
 
       list.key('enter', async () => {
+        if (!armed) return;
         const entries = Object.entries(cfg.requestHeaders);
         if (!entries.length) return;
         const idx = list.selected || 0;
@@ -1052,6 +1063,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       });
 
       list.key('a', async () => {
+        if (!armed) return;
         const result = await promptHeaderForm();
         if (result === null) { list.focus(); return; }
         cfg.requestHeaders[result.name] = result.value;
@@ -1060,6 +1072,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       });
 
       list.key('d', () => {
+        if (!armed) return;
         const entries = Object.entries(cfg.requestHeaders);
         if (!entries.length) return;
         const idx = list.selected || 0;
@@ -1152,7 +1165,10 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       };
 
       list.key('escape', cleanup);
-      list.key(['space', 'enter'], toggle);
+      list.key(['space', 'enter'], () => { if (armed) toggle(); });
+
+      let armed = false;
+      setImmediate(() => { armed = true; });
 
       rebuild();
       list.focus();
