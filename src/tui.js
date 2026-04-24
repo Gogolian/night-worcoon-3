@@ -224,6 +224,12 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     const entry = currentConfig();
     const running = !!(active && entry && entry.file === activeFile);
     const btnActive = cfgPane === 'right' && cfgRightFocus === 'btn' && focusZone === 'content';
+
+    // Bracket labels for the focused section.
+    const leftActive = focusZone === 'content' && cfgPane === 'left';
+    const optsActive = focusZone === 'content' && cfgPane === 'right' && cfgRightFocus === 'opts';
+    cfgList.setLabel(leftActive ? ' [ configs ] ' : ' configs ');
+    optionsList.setLabel(optsActive ? ' [ options ] ' : ' options ');
     const label = running ? ' ■ Stop ' : ' ▶ Start ';
     const color = running ? 'red' : 'green';
     const marker = btnActive
@@ -381,6 +387,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
 
   // Only act on nav keys when no popup is open (popups have their own focus).
   let popupCount = 0;
+  let headersEditorOpen = false;
   function navActive() { return popupCount === 0; }
 
   screen.key('left', () => {
@@ -459,7 +466,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     if (tab === 'Configs') {
       if (cfgPane === 'left') {
         if (atTopOfList(cfgList)) {
-          focusZone = 'tabs'; renderTabBar(); updateHelp();
+          focusZone = 'tabs'; renderTabBar(); renderRight(); updateHelp();
         } else {
           selectedCfgIdx--;
           cfgList.select(selectedCfgIdx);
@@ -565,7 +572,45 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       return;
     }
     if (active) {
-      logBox.log('{yellow-fg}another proxy is running – press s to stop first{/}');
+      const activeEntry = configs.find((c) => c.file === activeFile);
+      const pick = await promptChoice({
+        label: 'another proxy is running',
+        options: [
+          { label: 'close', value: 'close' },
+          { label: 'switch to this config', value: 'switch' },
+        ],
+        initialIdx: 0,
+      });
+      if (pick === 'switch') {
+        // Stop the current one, then start the newly selected one.
+        setStatus('stopping …', 'yellow');
+        try {
+          await onStop(active);
+          active = null; activeFile = null;
+        } catch (e) {
+          logBox.log(`{red-fg}stop failed: ${e.message}{/}`);
+          setStatus('stop failed', 'red');
+          loadConfigs();
+          return;
+        }
+        setStatus(`starting ${entry.config.name} …`, 'yellow');
+        try {
+          active = await onStart(entry.config, entry.file);
+          activeFile = entry.file;
+          setStatus(
+            `running · ${entry.config.name} · :${entry.config.port} → ${entry.config.target}`,
+            'green',
+          );
+        } catch (e) {
+          logBox.log(`{red-fg}start failed: ${e.message}{/}`);
+          setStatus('failed to start', 'red');
+        }
+        loadConfigs();
+      } else {
+        // user chose close or dismissed – just log and bail.
+        const name = activeEntry?.config?.name || activeFile || '(unknown)';
+        logBox.log(`{yellow-fg}"${name}" is already running – stop it first (s) or pick "switch"{/}`);
+      }
       return;
     }
     setStatus(`starting ${entry.config.name} …`, 'yellow');
@@ -623,7 +668,10 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         style: { fg: 'white', bg: 'black' },
       });
       input.setValue(initial ?? '');
+      let done = false;
       const cleanup = (val) => {
+        if (done) return;
+        done = true;
         popupCount = Math.max(0, popupCount - 1);
         box.destroy();
         screen.render();
@@ -634,10 +682,75 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         input.key(['C-s'], () => cleanup(input.getValue()));
       } else {
         input.on('submit', () => cleanup(input.getValue()));
+        input.on('cancel', () => cleanup(null));
       }
       input.focus();
       screen.render();
     });
+  }
+
+  // Popup that picks one of N options vertically. Returns picked value or null.
+  function promptChoice({ label, options, initialIdx = 0 }) {
+    return new Promise((resolve) => {
+      popupCount++;
+      const height = Math.min(options.length + 4, 20);
+      const box = popupBox({ label: ` ${label} `, width: 40, height });
+      blessed.box({
+        parent: box,
+        top: 0, left: 1, right: 1, height: 1,
+        content: '[↑/↓] pick  [enter] save  [esc] cancel',
+        style: { fg: 'white' },
+      });
+      const list = blessed.list({
+        parent: box,
+        top: 2, left: 1, right: 1, bottom: 1,
+        keys: true, mouse: true,
+        tags: true,
+        items: options.map((o) => ` ${o.label}`),
+        style: {
+          selected: { bg: 'blue', fg: 'white', bold: true },
+          item: { fg: 'white' },
+        },
+      });
+      list.select(Math.max(0, Math.min(initialIdx, options.length - 1)));
+      let done = false;
+      const cleanup = (val) => {
+        if (done) return;
+        done = true;
+        popupCount = Math.max(0, popupCount - 1);
+        box.destroy();
+        screen.render();
+        resolve(val);
+      };
+      list.key('escape', () => cleanup(null));
+      list.key('enter', () => {
+        const idx = list.selected || 0;
+        cleanup(options[idx]?.value ?? null);
+      });
+      list.focus();
+      screen.render();
+    });
+  }
+
+  // Restart active proxy after a config change (only if the edited entry
+  // is currently running).
+  async function restartIfActive(entry) {
+    if (!active || !entry || entry.file !== activeFile) return;
+    try {
+      await onStop(active);
+      active = null;
+      active = await onStart(entry.config, entry.file);
+      activeFile = entry.file;
+      setStatus(
+        `running · ${entry.config.name} · :${entry.config.port} → ${entry.config.target}`,
+        'green',
+      );
+    } catch (e) {
+      active = null; activeFile = null;
+      setStatus('restart failed', 'red');
+      logBox.log(`{red-fg}restart after config change failed: ${e.message}{/}`);
+    }
+    loadConfigs();
   }
 
   async function openOptionEditor(row) {
@@ -647,12 +760,31 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     if (row.kind === 'headers') {
       await openHeadersEditor(entry);
       renderRight();
+      await restartIfActive(entry);
       return;
     }
 
     if (row.kind === 'scalar') {
       const current = entry.config[row.key];
       const kind = typeof current;
+
+      if (kind === 'boolean') {
+        const picked = await promptChoice({
+          label: `edit ${row.key} (boolean)`,
+          options: [
+            { label: 'true', value: true },
+            { label: 'false', value: false },
+          ],
+          initialIdx: current ? 0 : 1,
+        });
+        if (picked === null) return;
+        entry.config[row.key] = picked;
+        saveCurrentConfig();
+        renderRight();
+        await restartIfActive(entry);
+        return;
+      }
+
       const val = await promptValue({
         label: `edit ${row.key} (${kind})`,
         initial: prettyValue(current),
@@ -666,12 +798,11 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
           return;
         }
         parsed = n;
-      } else if (kind === 'boolean') {
-        parsed = /^(true|1|yes|on)$/i.test(String(val).trim());
       }
       entry.config[row.key] = parsed;
       saveCurrentConfig();
       renderRight();
+      await restartIfActive(entry);
       return;
     }
 
@@ -687,6 +818,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         entry.config[row.key] = JSON.parse(val);
         saveCurrentConfig();
         renderRight();
+        await restartIfActive(entry);
       } catch (e) {
         logBox.log(`{red-fg}invalid JSON for ${row.key}: ${e.message}{/}`);
       }
@@ -694,6 +826,8 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   }
 
   async function openHeadersEditor(entry) {
+    if (headersEditorOpen) return;
+    headersEditorOpen = true;
     return new Promise((resolve) => {
       popupCount++;
       const cfg = entry.config;
@@ -731,12 +865,16 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       }
 
       const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        headersEditorOpen = false;
         popupCount = Math.max(0, popupCount - 1);
         saveCurrentConfig();
         box.destroy();
         screen.render();
         resolve();
       };
+      let cleanedUp = false;
 
       list.key('escape', cleanup);
 
