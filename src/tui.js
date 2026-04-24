@@ -57,6 +57,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   function renderTabBar() {
     const zoneActive = focusZone === 'tabs';
     tabBar.style.border.fg = zoneActive ? 'white' : 'cyan';
+    renderPageFrames();
     const segs = TABS.map((name, i) => {
       if (i === tabIdx && zoneActive)
         return `{blue-bg}{white-fg}{bold} ${name} {/}`;
@@ -447,6 +448,26 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   }
 
   helpBox.setContent(buildHelpContent());
+
+  function renderPageFrames() {
+    const activeContentTab = focusZone === 'content' ? TABS[tabIdx] : null;
+
+    logBox.setLabel(activeContentTab === 'Logs' ? ' [ live log ] ' : ' live log ');
+    logBox.style.border.fg = activeContentTab === 'Logs' ? 'white' : 'cyan';
+
+    mocksBox.setLabel(
+      activeContentTab === 'Mocks'
+        ? ' [ mock rules (selected config) ] '
+        : ' mock rules (selected config) ',
+    );
+    mocksBox.style.border.fg = activeContentTab === 'Mocks' ? 'white' : 'cyan';
+
+    pluginsBox.setLabel(activeContentTab === 'Plugins' ? ' [ plugins ] ' : ' plugins ');
+    pluginsBox.style.border.fg = activeContentTab === 'Plugins' ? 'white' : 'cyan';
+
+    helpBox.setLabel(activeContentTab === 'Help' ? ' [ help ] ' : ' help ');
+    helpBox.style.border.fg = activeContentTab === 'Help' ? 'white' : 'cyan';
+  }
 
   // =====================================================
   //                   TAB SWITCHING
