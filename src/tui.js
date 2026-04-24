@@ -200,20 +200,34 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     cfgList.setItem(selectedCfgIdx, labelForConfig(selectedCfgIdx));
   }
 
-  // Each row: { key, kind } kind: 'scalar' | 'json' | 'headers'
+  // Each row: { key, kind } kind: 'scalar' | 'json' | 'headers' | 'plugins'
   function buildOptionRows(cfg) {
     if (!cfg) return [];
     const rows = [];
-    const scalarKeys = ['name', 'port', 'target', 'changeOrigin', 'followRedirects'];
-    for (const k of scalarKeys) {
-      if (k in cfg) rows.push({ key: k, value: cfg[k], kind: 'scalar' });
+    const preferredOrder = ['name', 'port', 'target', 'changeOrigin', 'followRedirects', 'secure'];
+    const seen = new Set();
+
+    const pushRow = (k, v) => {
+      if (k === 'requestHeaders') {
+        rows.push({ key: k, value: v || {}, kind: 'headers' });
+      } else if (k === 'plugins') {
+        rows.push({ key: k, value: v || [], kind: 'plugins' });
+      } else if (v === null || ['string', 'number', 'boolean'].includes(typeof v)) {
+        rows.push({ key: k, value: v, kind: 'scalar' });
+      } else {
+        rows.push({ key: k, value: v, kind: 'json' });
+      }
+      seen.add(k);
+    };
+
+    for (const k of preferredOrder) {
+      if (k in cfg) pushRow(k, cfg[k]);
     }
-    rows.push({ key: 'requestHeaders', value: cfg.requestHeaders || {}, kind: 'headers' });
-    rows.push({ key: 'plugins', value: cfg.plugins || [], kind: 'json' });
+    if (!seen.has('requestHeaders')) pushRow('requestHeaders', cfg.requestHeaders || {});
+    if (!seen.has('plugins')) pushRow('plugins', cfg.plugins || []);
     for (const k of Object.keys(cfg)) {
-      if (scalarKeys.includes(k)) continue;
-      if (k === 'requestHeaders' || k === 'plugins') continue;
-      rows.push({ key: k, value: cfg[k], kind: 'json' });
+      if (seen.has(k)) continue;
+      pushRow(k, cfg[k]);
     }
     return rows;
   }
@@ -246,8 +260,16 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         const count = Object.keys(r.value || {}).length;
         return ` {yellow-fg}${r.key}{/}  →  ${count} header(s) …`;
       }
+      if (r.kind === 'plugins') {
+        const count = (r.value || []).length;
+        return ` {magenta-fg}${r.key}{/}  →  ${count} enabled …`;
+      }
       if (r.kind === 'json') {
         return ` {cyan-fg}${r.key}{/}  =  ${prettyValue(r.value).slice(0, 80)}`;
+      }
+      if (typeof r.value === 'boolean') {
+        const c = r.value ? 'green' : 'red';
+        return ` ${r.key}  =  {${c}-fg}{bold}${r.value}{/}`;
       }
       return ` ${r.key}  =  {white-fg}${prettyValue(r.value)}{/}`;
     });
@@ -631,6 +653,11 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   // =====================================================
   //                   POPUP EDITORS
   // =====================================================
+  // Popup background: bright black (gray); border yellow.
+  const POPUP_BG = 'gray';
+  const INPUT_BG = 'yellow';
+  const INPUT_FG = 'black';
+
   function popupBox(opts) {
     return blessed.box({
       parent: screen,
@@ -640,9 +667,16 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       border: 'line',
       label: opts.label,
       tags: true,
-      style: { border: { fg: 'yellow' }, bg: 'black' },
+      style: { border: { fg: 'yellow' }, bg: POPUP_BG, fg: 'white' },
       keys: false, mouse: true,
     });
+  }
+
+  // Decrement popupCount on next tick so any trailing key event
+  // (e.g. Enter that submitted a textbox) does not propagate to the
+  // screen-level handler and trigger an action in the underlying view.
+  function deferReleasePopup() {
+    setImmediate(() => { popupCount = Math.max(0, popupCount - 1); });
   }
 
   function promptValue({ label, initial, multiline = false }) {
@@ -657,7 +691,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         parent: box,
         top: 0, left: 1, right: 1, height: 1,
         content: multiline ? 'edit JSON · [Ctrl-S] save  [Esc] cancel' : '[Enter] save   [Esc] cancel',
-        style: { fg: 'white' },
+        style: { fg: 'white', bg: POPUP_BG },
       });
       const input = (multiline ? blessed.textarea : blessed.textbox)({
         parent: box,
@@ -665,14 +699,14 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         inputOnFocus: true,
         keys: true,
         mouse: true,
-        style: { fg: 'white', bg: 'black' },
+        style: { fg: INPUT_FG, bg: INPUT_BG },
       });
       input.setValue(initial ?? '');
       let done = false;
       const cleanup = (val) => {
         if (done) return;
         done = true;
-        popupCount = Math.max(0, popupCount - 1);
+        deferReleasePopup();
         box.destroy();
         screen.render();
         resolve(val);
@@ -689,45 +723,90 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     });
   }
 
-  // Popup that picks one of N options vertically. Returns picked value or null.
+  // Norton-Commander style choice popup. All buttons visible at once;
+  // the active one is highlighted. Use ←/→ (or ↑/↓) to move, Enter to pick.
   function promptChoice({ label, options, initialIdx = 0 }) {
     return new Promise((resolve) => {
       popupCount++;
-      const height = Math.min(options.length + 4, 20);
-      const box = popupBox({ label: ` ${label} `, width: 40, height });
+      const labels = options.map((o) => ` ${o.label} `);
+      const btnPaddedW = labels.reduce((m, l) => Math.max(m, l.length + 4), 10);
+      const totalBtnW = btnPaddedW * options.length + (options.length - 1);
+      const width = Math.max(40, Math.min(totalBtnW + 6, 100));
+      const height = 8;
+      const box = popupBox({ label: ` ${label} `, width, height });
       blessed.box({
         parent: box,
         top: 0, left: 1, right: 1, height: 1,
-        content: '[↑/↓] pick  [enter] save  [esc] cancel',
-        style: { fg: 'white' },
+        content: '[←/→] pick  [enter] confirm  [esc] cancel',
+        style: { fg: 'white', bg: POPUP_BG },
       });
-      const list = blessed.list({
-        parent: box,
-        top: 2, left: 1, right: 1, bottom: 1,
-        keys: true, mouse: true,
-        tags: true,
-        items: options.map((o) => ` ${o.label}`),
-        style: {
-          selected: { bg: 'blue', fg: 'white', bold: true },
-          item: { fg: 'white' },
-        },
-      });
-      list.select(Math.max(0, Math.min(initialIdx, options.length - 1)));
+
+      let cursor = Math.max(0, Math.min(initialIdx, options.length - 1));
+      const buttons = [];
       let done = false;
+      let keyHandler = null;
+
       const cleanup = (val) => {
         if (done) return;
         done = true;
-        popupCount = Math.max(0, popupCount - 1);
+        if (keyHandler) screen.removeListener('keypress', keyHandler);
+        deferReleasePopup();
         box.destroy();
         screen.render();
         resolve(val);
       };
-      list.key('escape', () => cleanup(null));
-      list.key('enter', () => {
-        const idx = list.selected || 0;
-        cleanup(options[idx]?.value ?? null);
-      });
-      list.focus();
+
+      function renderButtons() {
+        for (let i = 0; i < options.length; i++) {
+          const active = i === cursor;
+          const bg = active ? 'yellow' : 'black';
+          const fg = active ? 'black' : 'white';
+          const text = labels[i];
+          const padLeft = Math.floor((btnPaddedW - text.length) / 2);
+          const padRight = btnPaddedW - text.length - padLeft;
+          const inner = ' '.repeat(padLeft) + text + ' '.repeat(padRight);
+          buttons[i].style.bg = bg;
+          buttons[i].style.fg = fg;
+          buttons[i].setContent(`{${active ? 'bold' : 'normal'}}${inner}{/}`);
+        }
+        screen.render();
+      }
+
+      const startCol = Math.max(2, Math.floor((width - totalBtnW) / 2));
+      for (let i = 0; i < options.length; i++) {
+        const btn = blessed.box({
+          parent: box,
+          top: 3,
+          left: startCol + i * (btnPaddedW + 1),
+          width: btnPaddedW,
+          height: 3,
+          border: 'line',
+          tags: true,
+          mouse: true,
+          style: { border: { fg: 'white' }, bg: 'black', fg: 'white' },
+          content: '',
+        });
+        btn.on('click', () => { cursor = i; renderButtons(); cleanup(options[i].value ?? null); });
+        buttons.push(btn);
+      }
+
+      keyHandler = (_ch, key) => {
+        if (done) return;
+        const n = key && key.name;
+        if (n === 'escape') return cleanup(null);
+        if (n === 'enter' || n === 'return') return cleanup(options[cursor]?.value ?? null);
+        if (n === 'left' || n === 'up' || n === 'h') {
+          cursor = (cursor - 1 + options.length) % options.length;
+          renderButtons(); return;
+        }
+        if (n === 'right' || n === 'down' || n === 'l' || n === 'tab') {
+          cursor = (cursor + 1) % options.length;
+          renderButtons(); return;
+        }
+      };
+      screen.on('keypress', keyHandler);
+
+      renderButtons();
       screen.render();
     });
   }
@@ -806,6 +885,13 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       return;
     }
 
+    if (row.kind === 'plugins') {
+      await openPluginsEditor(entry);
+      renderRight();
+      await restartIfActive(entry);
+      return;
+    }
+
     if (row.kind === 'json') {
       const current = entry.config[row.key];
       const val = await promptValue({
@@ -825,6 +911,77 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     }
   }
 
+  // Combined "name + value" form for adding a header. A single popup with
+  // two textboxes; submitting either jumps to next, Tab/Shift-Tab toggles
+  // focus, Esc cancels at any time. Avoids the previous nested-popup bug.
+  function promptHeaderForm({ initialName = '', initialValue = '' } = {}) {
+    return new Promise((resolve) => {
+      popupCount++;
+      const box = popupBox({ label: ' add header ', width: '60%', height: 11 });
+      blessed.box({
+        parent: box,
+        top: 0, left: 1, right: 1, height: 1,
+        content: '[Tab] switch  [Enter] next/save  [Esc] cancel',
+        style: { fg: 'white', bg: POPUP_BG },
+      });
+      blessed.box({
+        parent: box, top: 2, left: 1, width: 8, height: 1,
+        content: 'name :', style: { fg: 'white', bg: POPUP_BG },
+      });
+      const nameInput = blessed.textbox({
+        parent: box, top: 2, left: 9, right: 1, height: 1,
+        inputOnFocus: true, keys: true, mouse: true,
+        style: { fg: INPUT_FG, bg: INPUT_BG },
+      });
+      blessed.box({
+        parent: box, top: 4, left: 1, width: 8, height: 1,
+        content: 'value:', style: { fg: 'white', bg: POPUP_BG },
+      });
+      const valueInput = blessed.textbox({
+        parent: box, top: 4, left: 9, right: 1, height: 1,
+        inputOnFocus: true, keys: true, mouse: true,
+        style: { fg: INPUT_FG, bg: INPUT_BG },
+      });
+      blessed.box({
+        parent: box, top: 6, left: 1, right: 1, height: 1,
+        content: '{white-fg}Press Enter on value to save.{/}',
+        tags: true, style: { fg: 'white', bg: POPUP_BG },
+      });
+
+      nameInput.setValue(initialName);
+      valueInput.setValue(initialValue);
+
+      let done = false;
+      const cleanup = (val) => {
+        if (done) return;
+        done = true;
+        deferReleasePopup();
+        box.destroy();
+        screen.render();
+        resolve(val);
+      };
+
+      const finish = () => {
+        const n = nameInput.getValue().trim();
+        const v = valueInput.getValue();
+        if (!n) { nameInput.focus(); return; }
+        cleanup({ name: n, value: v });
+      };
+
+      nameInput.key('escape', () => cleanup(null));
+      valueInput.key('escape', () => cleanup(null));
+      nameInput.key('tab', () => valueInput.focus());
+      valueInput.key('S-tab', () => nameInput.focus());
+      nameInput.on('submit', () => valueInput.focus());
+      valueInput.on('submit', finish);
+      nameInput.on('cancel', () => cleanup(null));
+      valueInput.on('cancel', () => cleanup(null));
+
+      nameInput.focus();
+      screen.render();
+    });
+  }
+
   async function openHeadersEditor(entry) {
     if (headersEditorOpen) return;
     headersEditorOpen = true;
@@ -841,7 +998,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         parent: box,
         top: 0, left: 1, right: 1, height: 1,
         content: '[↑/↓] pick  [enter] edit  [a] add  [d] delete  [Esc] close',
-        style: { fg: 'white' },
+        style: { fg: 'white', bg: POPUP_BG },
       });
       const list = blessed.list({
         parent: box,
@@ -851,6 +1008,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         style: {
           selected: { bg: 'blue', fg: 'white', bold: true },
           item: { fg: 'white' },
+          bg: POPUP_BG,
         },
       });
 
@@ -864,17 +1022,17 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         screen.render();
       }
 
+      let cleanedUp = false;
       const cleanup = () => {
         if (cleanedUp) return;
         cleanedUp = true;
         headersEditorOpen = false;
-        popupCount = Math.max(0, popupCount - 1);
+        deferReleasePopup();
         saveCurrentConfig();
         box.destroy();
         screen.render();
         resolve();
       };
-      let cleanedUp = false;
 
       list.key('escape', cleanup);
 
@@ -894,11 +1052,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       });
 
       list.key('a', async () => {
-        const name = await promptValue({ label: 'new header name', initial: '' });
-        if (name == null || name.trim() === '') { list.focus(); return; }
-        const val = await promptValue({ label: `value for ${name}`, initial: '' });
-        if (val === null) { list.focus(); return; }
-        cfg.requestHeaders[name.trim()] = val;
+        const result = await promptHeaderForm();
+        if (result === null) { list.focus(); return; }
+        cfg.requestHeaders[result.name] = result.value;
         rebuild();
         list.focus();
       });
@@ -911,6 +1067,92 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         delete cfg.requestHeaders[k];
         rebuild();
       });
+
+      rebuild();
+      list.focus();
+      screen.render();
+    });
+  }
+
+  async function openPluginsEditor(entry) {
+    return new Promise((resolve) => {
+      popupCount++;
+      const cfg = entry.config;
+      cfg.plugins ||= [];
+
+      let files = [];
+      try {
+        files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js'));
+      } catch {}
+      const names = files.map((f) => f.replace(/\.js$/, ''));
+      // Preserve any enabled plugin name even if its file is missing.
+      for (const n of cfg.plugins) {
+        if (!names.includes(n)) names.push(n);
+      }
+
+      const box = popupBox({
+        label: ' plugins ',
+        width: '60%',
+        height: Math.min(names.length + 6, 24),
+      });
+      blessed.box({
+        parent: box,
+        top: 0, left: 1, right: 1, height: 1,
+        content: '[↑/↓] pick  [space/enter] toggle  [Esc] close',
+        style: { fg: 'white', bg: POPUP_BG },
+      });
+
+      const list = blessed.list({
+        parent: box,
+        top: 2, left: 1, right: 1, bottom: 1,
+        keys: true, mouse: true,
+        tags: true,
+        style: {
+          selected: { bg: 'blue', fg: 'white', bold: true },
+          item: { fg: 'white' },
+          bg: POPUP_BG,
+        },
+      });
+
+      function rebuild() {
+        if (!names.length) {
+          list.setItems([' (no plugin files in plugins/)']);
+          screen.render();
+          return;
+        }
+        const enabled = new Set(cfg.plugins);
+        list.setItems(names.map((n) => {
+          const on = enabled.has(n);
+          const box = on ? '{green-fg}[x]{/}' : '{white-fg}[ ]{/}';
+          const tag = on ? '  {cyan-fg}(enabled){/}' : '';
+          return ` ${box}  ${n}${tag}`;
+        }));
+        screen.render();
+      }
+
+      function toggle() {
+        if (!names.length) return;
+        const idx = list.selected || 0;
+        const name = names[idx];
+        const i = cfg.plugins.indexOf(name);
+        if (i === -1) cfg.plugins.push(name);
+        else cfg.plugins.splice(i, 1);
+        rebuild();
+      }
+
+      let done = false;
+      const cleanup = () => {
+        if (done) return;
+        done = true;
+        deferReleasePopup();
+        saveCurrentConfig();
+        box.destroy();
+        screen.render();
+        resolve();
+      };
+
+      list.key('escape', cleanup);
+      list.key(['space', 'enter'], toggle);
 
       rebuild();
       list.focus();
