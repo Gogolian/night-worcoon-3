@@ -679,6 +679,19 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     setImmediate(() => { popupCount = Math.max(0, popupCount - 1); });
   }
 
+  function restorePopupFocus(previousFocus) {
+    if (
+      previousFocus
+      && previousFocus.screen === screen
+      && !previousFocus.detached
+      && typeof previousFocus.focus === 'function'
+    ) {
+      previousFocus.focus();
+      return;
+    }
+    screen.rewindFocus();
+  }
+
   function promptValue({ label, initial, multiline = false }) {
     return new Promise((resolve) => {
       popupCount++;
@@ -994,6 +1007,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     headersEditorOpen = true;
     return new Promise((resolve) => {
       popupCount++;
+      const previousFocus = screen.focused;
       const cfg = entry.config;
       cfg.requestHeaders ||= {};
 
@@ -1033,10 +1047,12 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       const cleanup = () => {
         if (cleanedUp) return;
         cleanedUp = true;
+        armed = false;
         headersEditorOpen = false;
         deferReleasePopup();
         saveCurrentConfig();
         box.destroy();
+        restorePopupFocus(previousFocus);
         screen.render();
         resolve();
       };
