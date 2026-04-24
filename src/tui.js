@@ -56,6 +56,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
 
   function renderTabBar() {
     const zoneActive = focusZone === 'tabs';
+    tabBar.style.border.fg = zoneActive ? 'white' : 'cyan';
     const segs = TABS.map((name, i) => {
       if (i === tabIdx && zoneActive)
         return `{blue-bg}{white-fg}{bold} ${name} {/}`;
