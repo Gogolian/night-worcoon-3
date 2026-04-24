@@ -1044,6 +1044,18 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       let armed = false;
       setImmediate(() => { armed = true; });
 
+      // Disarm the list while a sub-popup is open, and re-arm on next tick
+      // after it closes so the Enter that submitted the sub-popup doesn't
+      // re-trigger this list's enter/action handlers.
+      const withSubPopup = async (fn) => {
+        armed = false;
+        try {
+          return await fn();
+        } finally {
+          setImmediate(() => { armed = true; });
+        }
+      };
+
       list.key('escape', cleanup);
 
       list.key('enter', async () => {
@@ -1052,10 +1064,10 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         if (!entries.length) return;
         const idx = list.selected || 0;
         const [k, v] = entries[idx];
-        const nv = await promptValue({
+        const nv = await withSubPopup(() => promptValue({
           label: `edit header ${k}`,
           initial: String(v ?? ''),
-        });
+        }));
         if (nv === null) { list.focus(); return; }
         cfg.requestHeaders[k] = nv;
         rebuild();
@@ -1064,7 +1076,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
 
       list.key('a', async () => {
         if (!armed) return;
-        const result = await promptHeaderForm();
+        const result = await withSubPopup(() => promptHeaderForm());
         if (result === null) { list.focus(); return; }
         cfg.requestHeaders[result.name] = result.value;
         rebuild();
