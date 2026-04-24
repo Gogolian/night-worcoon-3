@@ -1042,7 +1042,6 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       };
 
       let armed = false;
-      setImmediate(() => { armed = true; });
 
       // Disarm the list while a sub-popup is open, and re-arm on next tick
       // after it closes so the Enter that submitted the sub-popup doesn't
@@ -1094,8 +1093,14 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       });
 
       rebuild();
-      list.focus();
-      screen.render();
+      // Defer focus so the Enter that opened the editor cannot also
+      // trigger an immediate edit on the first selected header.
+      setImmediate(() => {
+        if (cleanedUp) return;
+        armed = true;
+        list.focus();
+        screen.render();
+      });
     });
   }
 
