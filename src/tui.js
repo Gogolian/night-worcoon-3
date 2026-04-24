@@ -42,7 +42,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   });
 
   // ---------- tab bar ----------
-  const TABS = ['Configs', 'Logs', 'Mocks', 'Plugins'];
+  const TABS = ['Configs', 'Logs', 'Mocks', 'Plugins', 'Help'];
   let tabIdx = 0;
   let focusZone = 'tabs'; // 'tabs' | 'content'
 
@@ -244,6 +244,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     const optsActive = focusZone === 'content' && cfgPane === 'right' && cfgRightFocus === 'opts';
     cfgList.setLabel(leftActive ? ' [ configs ] ' : ' configs ');
     optionsList.setLabel(optsActive ? ' [ options ] ' : ' options ');
+    cfgList.style.border.fg = leftActive ? 'white' : 'cyan';
+    optionsList.style.border.fg = optsActive ? 'white' : 'cyan';
+    startBtn.style.border.fg = btnActive ? 'white' : 'cyan';
     const label = running ? ' ■ Stop ' : ' ▶ Start ';
     const color = running ? 'red' : 'green';
     const marker = btnActive
@@ -365,6 +368,86 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   }
 
   // =====================================================
+  //                       HELP TAB
+  // =====================================================
+  const helpPage = pages['Help'];
+
+  const helpBox = blessed.box({
+    parent: helpPage,
+    label: ' help ',
+    top: 0, left: 0, right: 0, bottom: 0,
+    border: 'line',
+    tags: true,
+    mouse: true,
+    keys: false,
+    scrollable: true,
+    alwaysScroll: true,
+    scrollbar: { ch: ' ', style: { bg: 'cyan' } },
+    style: {
+      border: { fg: 'cyan' },
+      fg: 'white',
+    },
+  });
+
+  function buildHelpContent() {
+    const colors = [
+      { label: 'black', bg: 'black', fg: 'white', code: 'black', ansi: 'ANSI 0' },
+      { label: 'red', bg: 'red', fg: 'white', code: 'red', ansi: 'ANSI 1' },
+      { label: 'green', bg: 'green', fg: 'black', code: 'green', ansi: 'ANSI 2' },
+      { label: 'yellow', bg: 'yellow', fg: 'black', code: 'yellow', ansi: 'ANSI 3' },
+      { label: 'blue', bg: 'blue', fg: 'white', code: 'blue', ansi: 'ANSI 4' },
+      { label: 'magenta', bg: 'magenta', fg: 'white', code: 'magenta', ansi: 'ANSI 5' },
+      { label: 'cyan', bg: 'cyan', fg: 'black', code: 'cyan', ansi: 'ANSI 6' },
+      { label: 'white', bg: 'white', fg: 'black', code: 'white', ansi: 'ANSI 7' },
+      { label: 'bright black / gray', bg: 'gray', fg: 'white', code: 'gray', ansi: 'ANSI 8' },
+      { label: 'bright red', bg: '#ff5555', fg: 'black', code: '#ff5555', ansi: 'ANSI 9' },
+      { label: 'bright green', bg: '#55ff55', fg: 'black', code: '#55ff55', ansi: 'ANSI 10' },
+      { label: 'bright yellow', bg: '#ffff55', fg: 'black', code: '#ffff55', ansi: 'ANSI 11' },
+      { label: 'bright blue', bg: '#5555ff', fg: 'white', code: '#5555ff', ansi: 'ANSI 12' },
+      { label: 'bright magenta', bg: '#ff55ff', fg: 'black', code: '#ff55ff', ansi: 'ANSI 13' },
+      { label: 'bright cyan', bg: '#55ffff', fg: 'black', code: '#55ffff', ansi: 'ANSI 14' },
+      { label: 'bright white', bg: '#ffffff', fg: 'black', code: '#ffffff', ansi: 'ANSI 15' },
+    ];
+
+    const colorLines = colors.map(({ label, bg, fg, code, ansi }) => {
+      const swatch = label.padEnd(20);
+      return ` {${bg}-bg}{${fg}-fg} ${swatch} {/}  ${ansi.padEnd(8)}  use: ${code}`;
+    });
+
+    return [
+      '{bold}night-worcoon-3{/bold}',
+      'TUI-driven middleware proxy for HTTP and WebSocket traffic.',
+      '',
+      '{bold}What it does{/bold}',
+      ' Start a local proxy from a saved config profile.',
+      ' Edit request headers and runtime options directly in the TUI.',
+      ' Toggle plugins, inspect mock rules, and watch live traffic.',
+      '',
+      '{bold}Quick map{/bold}',
+      ' Configs  - choose a profile, edit settings, start or stop the proxy.',
+      ' Logs     - live request, response, and proxy events.',
+      ' Mocks    - mock rules for the selected profile.',
+      ' Plugins  - available plugins and which ones are enabled.',
+      ' Help     - this reference page.',
+      '',
+      '{bold}Terminal color legend{/bold}',
+      'Swatches below show the common 16-color ANSI palette.',
+      'Named colors can be reused directly in Blessed tags. Bright variants use hex here',
+      'so you can see them clearly even when you are not using a named alias.',
+      '',
+      ...colorLines,
+      '',
+      '{bold}Current app color names{/bold}',
+      'black, white, gray, red, green, yellow, blue, magenta, cyan',
+      '',
+      '{bold}Hex colors{/bold}',
+      'Blessed also accepts hex colors directly, for example {#ff8800-fg}#ff8800{/}.',
+    ].join('\n');
+  }
+
+  helpBox.setContent(buildHelpContent());
+
+  // =====================================================
   //                   TAB SWITCHING
   // =====================================================
   function showTab(idx) {
@@ -397,6 +480,8 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       setHelp('[↑/↓] browse   [↑@top → tabs]   [q] quit');
     } else if (tab === 'Plugins') {
       setHelp('[↑/↓] browse   [↑@top → tabs]   [q] quit');
+    } else if (tab === 'Help') {
+      setHelp('[↑/↓] scroll   [↑@top → tabs]   [q] quit');
     }
   }
 
@@ -410,6 +495,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   // Only act on nav keys when no popup is open (popups have their own focus).
   let popupCount = 0;
   let headersEditorOpen = false;
+  let pluginsEditorOpen = false;
   function navActive() { return popupCount === 0; }
 
   screen.key('left', () => {
@@ -448,6 +534,8 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       } else if (tab === 'Plugins') {
         pluginsBox.focus();
         if ((pluginsBox.selected || 0) < 0) pluginsBox.select(0);
+      } else if (tab === 'Help') {
+        helpBox.focus();
       }
       renderTabBar(); renderRight(); updateHelp();
       return;
@@ -478,6 +566,8 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       mocksBox.select((mocksBox.selected || 0) + 1); screen.render();
     } else if (tab === 'Plugins') {
       pluginsBox.select((pluginsBox.selected || 0) + 1); screen.render();
+    } else if (tab === 'Help') {
+      helpBox.scroll(1); screen.render();
     }
   });
 
@@ -520,6 +610,10 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       const cur = pluginsBox.selected || 0;
       if (cur === 0) { focusZone = 'tabs'; renderTabBar(); updateHelp(); }
       else { pluginsBox.select(cur - 1); screen.render(); }
+    } else if (tab === 'Help') {
+      const y = helpBox.getScroll?.() ?? 0;
+      if (y <= 0) { focusZone = 'tabs'; renderTabBar(); updateHelp(); }
+      else { helpBox.scroll(-1); screen.render(); }
     }
   });
 
@@ -532,6 +626,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       else if (tab === 'Logs') logBox.focus();
       else if (tab === 'Mocks') mocksBox.focus();
       else if (tab === 'Plugins') pluginsBox.focus();
+      else if (tab === 'Help') helpBox.focus();
       renderTabBar(); renderRight(); updateHelp();
       return;
     }
@@ -1121,8 +1216,11 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   }
 
   async function openPluginsEditor(entry) {
+    if (pluginsEditorOpen) return;
+    pluginsEditorOpen = true;
     return new Promise((resolve) => {
       popupCount++;
+      const previousFocus = screen.focused;
       const cfg = entry.config;
       cfg.plugins ||= [];
 
@@ -1151,7 +1249,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       const list = blessed.list({
         parent: box,
         top: 2, left: 1, right: 1, bottom: 1,
-        keys: true, mouse: true,
+        keys: false, mouse: true,
         tags: true,
         style: {
           selected: { bg: 'blue', fg: 'white', bold: true },
@@ -1173,6 +1271,8 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
           const tag = on ? '  {cyan-fg}(enabled){/}' : '';
           return ` ${box}  ${n}${tag}`;
         }));
+        if ((list.selected ?? -1) < 0) list.select(0);
+        else if ((list.selected || 0) >= names.length) list.select(Math.max(0, names.length - 1));
         screen.render();
       }
 
@@ -1187,25 +1287,43 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       }
 
       let done = false;
+      let armed = false;
+
+      function moveSelection(offset) {
+        if (!names.length) return;
+        const cur = list.selected || 0;
+        const next = Math.max(0, Math.min(names.length - 1, cur + offset));
+        if (next === cur) return;
+        list.select(next);
+        screen.render();
+      }
+
       const cleanup = () => {
         if (done) return;
         done = true;
+        armed = false;
+        pluginsEditorOpen = false;
         deferReleasePopup();
         saveCurrentConfig();
         box.destroy();
+        restorePopupFocus(previousFocus);
         screen.render();
         resolve();
       };
 
       list.key('escape', cleanup);
+      list.key('up', () => { if (armed) moveSelection(-1); });
+      list.key('down', () => { if (armed) moveSelection(1); });
       list.key(['space', 'enter'], () => { if (armed) toggle(); });
 
-      let armed = false;
-      setImmediate(() => { armed = true; });
-
       rebuild();
-      list.focus();
       screen.render();
+      setImmediate(() => {
+        if (done) return;
+        armed = true;
+        list.focus();
+        screen.render();
+      });
     });
   }
 
