@@ -673,15 +673,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
 
   screen.key(['s'], async () => {
     if (!active) return;
-    setStatus('stopping …', 'yellow');
-    try {
-      await onStop(active);
-      active = null; activeFile = null;
-      setStatus('no active proxy', 'white');
-      loadConfigs();
-    } catch (e) {
-      logBox.log(`{red-fg}stop failed: ${e.message}{/}`);
-    }
+    if (await stopActive()) loadConfigs();
   });
 
   screen.key(['C-r'], loadConfigs);
@@ -695,21 +687,56 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   // =====================================================
   //                   START / STOP
   // =====================================================
+
+  // Compose status text for a running proxy.
+  function runningStatusText(cfg) {
+    return `running · ${cfg.name} · :${cfg.port} → ${cfg.target}`;
+  }
+
+  // Stop the currently active proxy. Returns true on success, false on failure.
+  // The status line is updated here; the caller may override afterwards.
+  async function stopActive() {
+    if (!active) return true;
+    setStatus('stopping …', 'yellow');
+    try {
+      await onStop(active);
+      active = null; activeFile = null;
+      setStatus('no active proxy', 'white');
+      return true;
+    } catch (e) {
+      logBox.log(`{red-fg}stop failed: ${e.message}{/}`);
+      setStatus('stop failed', 'red');
+      return false;
+    }
+  }
+
+  // Start the proxy for the given entry. Returns true on success.
+  async function startEntry(entry) {
+    setStatus(`starting ${entry.config.name} …`, 'yellow');
+    try {
+      active = await onStart(entry.config, entry.file);
+      activeFile = entry.file;
+      setStatus(runningStatusText(entry.config), 'green');
+      return true;
+    } catch (e) {
+      logBox.log(`{red-fg}start failed: ${e.message}{/}`);
+      setStatus('failed to start', 'red');
+      return false;
+    }
+  }
+
   async function toggleStartStop() {
     const entry = currentConfig();
     if (!entry?.config) { logBox.log('{red-fg}invalid config{/}'); return; }
+
+    // Case 1: the selected entry is already running → stop it.
     if (active && entry.file === activeFile) {
-      setStatus('stopping …', 'yellow');
-      try {
-        await onStop(active);
-        active = null; activeFile = null;
-        setStatus('no active proxy', 'white');
-      } catch (e) {
-        logBox.log(`{red-fg}stop failed: ${e.message}{/}`);
-      }
+      await stopActive();
       loadConfigs();
       return;
     }
+
+    // Case 2: a different proxy is running → ask whether to switch.
     if (active) {
       const activeEntry = configs.find((c) => c.file === activeFile);
       const pick = await promptChoice({
@@ -721,49 +748,17 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         initialIdx: 0,
       });
       if (pick === 'switch') {
-        // Stop the current one, then start the newly selected one.
-        setStatus('stopping …', 'yellow');
-        try {
-          await onStop(active);
-          active = null; activeFile = null;
-        } catch (e) {
-          logBox.log(`{red-fg}stop failed: ${e.message}{/}`);
-          setStatus('stop failed', 'red');
-          loadConfigs();
-          return;
-        }
-        setStatus(`starting ${entry.config.name} …`, 'yellow');
-        try {
-          active = await onStart(entry.config, entry.file);
-          activeFile = entry.file;
-          setStatus(
-            `running · ${entry.config.name} · :${entry.config.port} → ${entry.config.target}`,
-            'green',
-          );
-        } catch (e) {
-          logBox.log(`{red-fg}start failed: ${e.message}{/}`);
-          setStatus('failed to start', 'red');
-        }
-        loadConfigs();
+        if (await stopActive()) await startEntry(entry);
       } else {
-        // user chose close or dismissed – just log and bail.
         const name = activeEntry?.config?.name || activeFile || '(unknown)';
         logBox.log(`{yellow-fg}"${name}" is already running – stop it first (s) or pick "switch"{/}`);
       }
+      loadConfigs();
       return;
     }
-    setStatus(`starting ${entry.config.name} …`, 'yellow');
-    try {
-      active = await onStart(entry.config, entry.file);
-      activeFile = entry.file;
-      setStatus(
-        `running · ${entry.config.name} · :${entry.config.port} → ${entry.config.target}`,
-        'green',
-      );
-    } catch (e) {
-      logBox.log(`{red-fg}start failed: ${e.message}{/}`);
-      setStatus('failed to start', 'red');
-    }
+
+    // Case 3: nothing running → just start it.
+    await startEntry(entry);
     loadConfigs();
   }
 
@@ -950,19 +945,15 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   // is currently running).
   async function restartIfActive(entry) {
     if (!active || !entry || entry.file !== activeFile) return;
-    try {
-      await onStop(active);
-      active = null;
-      active = await onStart(entry.config, entry.file);
-      activeFile = entry.file;
-      setStatus(
-        `running · ${entry.config.name} · :${entry.config.port} → ${entry.config.target}`,
-        'green',
-      );
-    } catch (e) {
-      active = null; activeFile = null;
+    if (!(await stopActive())) {
       setStatus('restart failed', 'red');
-      logBox.log(`{red-fg}restart after config change failed: ${e.message}{/}`);
+      logBox.log(`{red-fg}restart after config change: stop failed{/}`);
+      loadConfigs();
+      return;
+    }
+    if (!(await startEntry(entry))) {
+      setStatus('restart failed', 'red');
+      logBox.log(`{red-fg}restart after config change: start failed{/}`);
     }
     loadConfigs();
   }
