@@ -91,11 +91,12 @@ for (const p of plugins) {
         <tr><td><a href="#metrics"><code>metrics</code></a></td><td>Per-route counters, latency histograms, error rates, bytes in/out. Prometheus endpoint + TUI tab.</td><td><code>metrics</code> (endpoint only)</td></tr>
         <tr><td><a href="#tap"><code>tap</code></a></td>        <td>Stream live transactions into the TUI.</td>  <td>— (only observes)</td></tr>
         <tr><td><a href="#ws-tap"><code>ws-tap</code></a></td><td>Log, mock, record, and replay WS frames.</td><td><code>ws_tap_mock</code> · <code>ws_tap_replay</code> · <code>ws_tap_drop</code></td></tr>
+        <tr><td><a href="#har-export"><code>har-export</code></a></td><td>Accumulate traffic and write a standard HAR 1.2 file on demand.</td><td><code>har-export</code> (control endpoints only)</td></tr>
       </tbody>
     </table>
 
     <p>Recommended ordering when using all of them:
-    <code>["metrics", "cors", "latency", "bucket", "mock", "recorder", "tap", "ws-tap"]</code>.</p>
+    <code>["metrics", "cors", "latency", "bucket", "mock", "recorder", "tap", "ws-tap", "har-export"]</code>.</p>
 
     <!-- ----- cors ----- -->
 
@@ -411,6 +412,81 @@ for (const p of plugins) {
     helpers as HTTP mocks, plus optional <code>direction</code>
     (<code>"client"</code> or <code>"server"</code>), <code>textContains</code>,
     and <code>textEquals</code>.</p>
+
+    <!-- ----- har-export ----- -->
+
+    <h2 id="har-export">har-export</h2>
+    <p>Source: <code>plugins/har-export.js</code> · TUI: <code>plugins/har-export.tui.js</code></p>
+
+    <p>Pure observer. Runs in <code>onResponse</code> and accumulates every
+    completed HTTP transaction as a
+    <a href="https://w3c.github.io/web-performance/specs/HAR/Overview.html">HAR 1.2</a>
+    entry. Captures can be downloaded as a <code>.har</code> file via a TUI key
+    or an HTTP control endpoint, then opened in Chrome DevTools, Charles,
+    Fiddler, or Postman for timeline analysis.</p>
+
+<pre><code>"plugins": ["tap", "har-export"],
+"harExport": {
+  "outputPath": "./recordings/capture.har",   // default save path
+  "captureAll": false,                        // false = proxy-source only
+  "controlPath": "/_har"                      // HTTP control prefix
+}</code></pre>
+
+    <h3>HTTP control endpoints</h3>
+
+    <p>The plugin intercepts a small set of paths on the proxy's own port
+    (<code>controlPath</code> prefix, default <code>/_har</code>) so you can
+    automate exports from scripts or CI without a TUI session.</p>
+
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="pill GET">GET</span></td>
+          <td><code>/_har/export</code></td>
+          <td>Return the current capture as <code>application/json</code>
+          (HAR 1.2). Includes full request + response bodies.</td>
+        </tr>
+        <tr>
+          <td><span class="pill POST">POST</span></td>
+          <td><code>/_har/save</code></td>
+          <td>Write the capture to <code>outputPath</code> on disk.
+          Returns <code>{ ok, path, entries }</code>.</td>
+        </tr>
+        <tr>
+          <td><span class="pill POST">POST</span></td>
+          <td><code>/_har/reset</code></td>
+          <td>Clear the in-memory capture buffer.
+          Returns <code>{ ok, cleared }</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>TUI tab (HAR)</h3>
+
+    <p>When har-export is enabled the TUI gains a <strong>HAR</strong> tab
+    that shows a live feed of captured entries and the path of the most recent
+    export.</p>
+
+    <table>
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>e</kbd></td><td>Prompt for a file path (default = <code>outputPath</code>) and write a HAR summary.</td></tr>
+        <tr><td><kbd>x</kbd></td><td>Clear the TUI's local entry list.</td></tr>
+        <tr><td><kbd>p</kbd></td><td>Pause / resume live capture in the TUI.</td></tr>
+        <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Scroll the entry list.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout tip">
+      <span class="label">Two capture contexts</span>
+      The plugin's HTTP control endpoints and the TUI tab maintain
+      <em>independent</em> in-memory buffers. The HTTP buffer holds full
+      request/response bodies (suitable for Postman import); the TUI buffer
+      holds summary rows (suitable for timeline views). Use the TUI
+      <kbd>e</kbd> key or <code>POST /_har/save</code> depending on what level
+      of detail you need.
+    </div>
 
     <div class="footer">
       Next: <a href="storage.html">Storage →</a> · or
