@@ -41,6 +41,7 @@ Building against a flaky third-party API? Need to replay yesterday's traffic? Wa
 - 🪣 **Built-in Bucket** — instant CRUD datastore (`POST/GET/PATCH/PUT/DELETE`) for prototyping.
 - 🎭 **Rule-based mocks** — `PASS`, `MOCK`, `RET_REC` (replay from recordings) with fallbacks.
 - 📼 **Recorder** — capture real upstream responses to disk or SQLite for later replay.
+- 🧪 **Diff shadowing** — replay a recording while also querying upstream, then report status/header/JSON drift.
 - 🔎 **Tap inspector** — live request/response TUI tab with filters and copy-as-cURL.
 - 🐢 **Chaos / latency** — inject delays, jitter, and random failures globally or per-rule.
 - 🌐 **CORS plugin** — preflight handling and response augmentation out of the box.
@@ -116,7 +117,7 @@ Each file in `configs/` is one proxy profile. The full shape:
   "followRedirects": false,
 
   // pipeline order; only listed plugins run
-  "plugins": ["cors", "latency", "bucket", "mock", "recorder", "tap", "ws-tap"],
+  "plugins": ["cors", "latency", "bucket", "mock", "diff", "recorder", "tap", "ws-tap"],
 
   // recording backend (used by `recorder` and `RET_REC`)
   "storage": { "type": "fs",     "path": "./recordings/httpbin" },
@@ -125,13 +126,14 @@ Each file in `configs/` is one proxy profile. The full shape:
   "mock":     { /* see below */ },
   "bucket":   { /* see below */ },
   "recorder": { "recordAll": false },
+  "diff":     { "ignoreHeaders": ["date"], "maxBodyDiffs": 20 },
   "latency":  { /* see below */ },
   "cors":     { /* see below */ },
   "wsTap":    { /* see below */ }
 }
 ```
 
-Recommended plugin order: **`["cors", "latency", "bucket", "mock", "recorder", "tap"]`** — security/transport first, simulation next, data layer, rule-based behavior, then observers.
+Recommended plugin order: **`["cors", "latency", "bucket", "mock", "diff", "recorder", "tap"]`** — security/transport first, simulation next, data layer, rule-based behavior, then observers.
 
 ## 🎭 Mock plugin
 
@@ -215,6 +217,21 @@ Bodies are stored as UTF‑8 when printable, otherwise base64.
 ```jsonc
 "recorder": { "recordAll": false }   // true → record every request, not just mock-matched
 ```
+
+## 🧪 Diff shadowing
+
+Add `diff` after `mock` to shadow successful `RET_REC` replays against the real upstream. The client still receives the recorded response, while `diff` forwards the same request upstream in the response phase and logs drift in status, non-ignored headers, and JSON body fields.
+
+```jsonc
+"plugins": ["mock", "diff", "recorder", "tap"],
+"diff": {
+  "ignoreHeaders": ["date", "x-request-id"],
+  "maxBodyDiffs": 20,
+  "logMatches": false
+}
+```
+
+`date`, `connection`, `keep-alive`, and `transfer-encoding` are ignored by default because they commonly change between calls. Drift is emitted as a `[diff] drift ...` warning plus a structured `logger.trace("diff", ...)` event.
 
 ## 🔎 Tap inspector
 

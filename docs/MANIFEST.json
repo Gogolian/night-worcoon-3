@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "description": "Tracks which source files each HTML doc page covers, plus a SHA-256 fingerprint of each source at the time the docs were last refreshed. Run `node docs/check-docs.mjs` to detect drift, then `--update` to refresh hashes after editing the affected pages.",
-  "generatedAt": "2026-04-30T20:59:13.869Z",
+  "generatedAt": "2026-04-30T21:23:07.639Z",
   "docs": {
     "docs/index.html": "Overview, quick start, project layout.",
     "docs/architecture.html": "Big picture, request lifecycle, ctx shape, module map.",
@@ -31,8 +31,8 @@
       "summary": "Blessed-based UI. Tabs: Configs / Logs / Mocks / Plugins / Help. Global keys for tab nav, start/stop, quit, reload."
     },
     "src/proxy.js": {
-      "sha256": "cfe372a1db3bf25018c598b7ee5d18e6ad3d9d597a572d01f0e499f8fcff5c75",
-      "lines": 195,
+      "sha256": "a05d95899ef7b193870bbcdfb7a7609e1e2b9f395d5cdf38e7d17b32bc27b9f4",
+      "lines": 202,
       "covers": [
         "docs/architecture.html",
         "docs/extending.html"
@@ -156,8 +156,8 @@
       "summary": "Scripts (start, start:headless), deps (blessed), optional dep (better-sqlite3), Node >=18."
     },
     "README.md": {
-      "sha256": "4217380b683ab03157626b8ea50ff7aeefbb646f775c1d2224a4fe2e3fb61f15",
-      "lines": 356,
+      "sha256": "33c760955b1f8e1a1eef30f3191df5b4ff11852c0bd34b7a92986fd522cd2da2",
+      "lines": 390,
       "covers": [
         "docs/index.html"
       ],
@@ -200,6 +200,15 @@
         "docs/extending.html"
       ],
       "summary": "Built-in WebSocket tap plugin. Logs frames, records sessions to JSON, and supports PASS/DROP/MOCK/REPLAY rules."
+    },
+    "plugins/diff.js": {
+      "sha256": "f918cd15c83a015c39a28611db2b44c4750a69162a8706fd700e355ad6735899",
+      "lines": 220,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html"
+      ],
+      "summary": "onResponse observer for RET_REC shadow mode. Calls ctx.forwardUpstream(), compares replay vs upstream status, normalized headers, and JSON body, then logs/traces drift."
     }
   }
 }

@@ -124,6 +124,7 @@ export default {
   },
 
   response: null | { status, headers, body },   // set to short-circuit
+  forwardUpstream: () =&gt; Promise&lt;{ status, headers, body }&gt;,
   meta:    { source: null | 'proxy' | 'mock' | 'ret_rec'
                            | 'ret_rec_fallback' | 'bucket' | 'cors'
                            | 'latency_fail' | &lt;your tag&gt;,
