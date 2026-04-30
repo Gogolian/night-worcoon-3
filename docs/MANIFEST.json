@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "description": "Tracks which source files each HTML doc page covers, plus a SHA-256 fingerprint of each source at the time the docs were last refreshed. Run `node docs/check-docs.mjs` to detect drift, then `--update` to refresh hashes after editing the affected pages.",
-  "generatedAt": "2026-04-30T20:18:21.989Z",
+  "generatedAt": "2026-04-30T20:59:13.869Z",
   "docs": {
     "docs/index.html": "Overview, quick start, project layout.",
     "docs/architecture.html": "Big picture, request lifecycle, ctx shape, module map.",
@@ -13,8 +13,8 @@
   },
   "sources": {
     "src/index.js": {
-      "sha256": "3c646a56ff8c09404eb11622defd875326aa3d89c5b20e5529d373a068cbceec",
-      "lines": 73,
+      "sha256": "9c49ba3f852b2352541757b3e2f8a91e9ac62385c86d29fd3104e000d13a8685",
+      "lines": 76,
       "covers": [
         "docs/architecture.html",
         "docs/tui.html",
@@ -23,16 +23,16 @@
       "summary": "Entry point. Parses argv (--headless, --config), wires logger to stdout in headless mode, otherwise creates the TUI."
     },
     "src/tui.js": {
-      "sha256": "23dc34dae11c484e686f7a9b1d393b68a800fd622788ad8db4ae6b662042af8c",
-      "lines": 1383,
+      "sha256": "8a20fa358745ca8c0382a5b66c03133033374df1e4939183cda75f67a512a56c",
+      "lines": 2225,
       "covers": [
         "docs/tui.html"
       ],
       "summary": "Blessed-based UI. Tabs: Configs / Logs / Mocks / Plugins / Help. Global keys for tab nav, start/stop, quit, reload."
     },
     "src/proxy.js": {
-      "sha256": "6d87cc6f38dbf9c02a2de5bfeb24197c5addf13a97a408d152b1c04ce90b1249",
-      "lines": 201,
+      "sha256": "cfe372a1db3bf25018c598b7ee5d18e6ad3d9d597a572d01f0e499f8fcff5c75",
+      "lines": 195,
       "covers": [
         "docs/architecture.html",
         "docs/extending.html"
@@ -40,8 +40,8 @@
       "summary": "startProxy(): builds storage, loads plugins, runs HTTP server with onRequest/onResponse pipeline, manual forwarder with redirect support, WS upgrade passthrough via http-proxy."
     },
     "src/plugins.js": {
-      "sha256": "2a32c7f18aa5c4ee9a837f436819c498bd3f8855dc535f4410c57116093e0a00",
-      "lines": 74,
+      "sha256": "043b516053aec870d6848d255c142bd7115d703679d1a61244d332bb0368cf93",
+      "lines": 83,
       "covers": [
         "docs/plugins.html",
         "docs/extending.html",
@@ -50,8 +50,8 @@
       "summary": "loadPlugins() (auto-discovers plugins/*.js, instantiates from object or factory, sorts by config.plugins order, calls init); runOnRequest stops at first short-circuit; runOnResponse always runs all."
     },
     "src/storage.js": {
-      "sha256": "da934aa803fd1f0f5c2c672c36052f871b905980e98032a39a6f8d06b1d63ed6",
-      "lines": 184,
+      "sha256": "d14d2c49017a3f9c9beccae12824f8f2b9ac5cd2c39a24139c2740a051d543dc",
+      "lines": 186,
       "covers": [
         "docs/storage.html"
       ],
@@ -94,8 +94,8 @@
       "summary": "onRequest: sleeps delayMs+random*jitterMs, then with failRate probability sets a synthetic failStatus response. Per-rule overrides via compileRule/matchRule."
     },
     "plugins/bucket.js": {
-      "sha256": "9f2be2f9f1f7efae28a8467b12a092cbf31e77051e437c215ae658304c639220",
-      "lines": 272,
+      "sha256": "4b44d9766061c46b9245c275d4d57ba81c435004e890fcb47ae5d800bed2584f",
+      "lines": 285,
       "covers": [
         "docs/plugins.html",
         "docs/configs.html"
@@ -148,20 +148,39 @@
       "summary": "Example: same as httpbin.json but with sqlite storage."
     },
     "package.json": {
-      "sha256": "1b525b17fb47782c458d03fa8b6cb858613fec2b0e19b10992b5358e8f41ae9c",
-      "lines": 25,
+      "sha256": "6489ecc197c700216b1c87b36d813b86926885d4c832998a7c02515e1a235525",
+      "lines": 24,
       "covers": [
         "docs/index.html"
       ],
-      "summary": "Scripts (start, start:headless), deps (blessed, http-proxy), optional dep (better-sqlite3), Node >=18."
+      "summary": "Scripts (start, start:headless), deps (blessed), optional dep (better-sqlite3), Node >=18."
     },
     "README.md": {
-      "sha256": "647834a433184f8c82abde29141e781883189b1e55f83571628b8ae703e4e8af",
-      "lines": 220,
+      "sha256": "4217380b683ab03157626b8ea50ff7aeefbb646f775c1d2224a4fe2e3fb61f15",
+      "lines": 356,
       "covers": [
         "docs/index.html"
       ],
       "summary": "Top-level README mirroring most of the docs at a higher level. If this changes, the Overview page may need a touch-up."
+    },
+    "src/ws-proxy.js": {
+      "sha256": "dcc1d6a176d869c7dd0fb5eb012cb7dfe7c3aeb76fc4f0af66cba4f881bb99d6",
+      "lines": 292,
+      "covers": [
+        "docs/architecture.html",
+        "docs/extending.html"
+      ],
+      "summary": "Handles WebSocket upstream handshakes, parses/re-encodes frames, and bridges text/binary messages into runOnWsMessage()."
+    },
+    "plugins/ws-tap.js": {
+      "sha256": "93c4f383bdf06e074260841772ea6d0ee2a62992d643a243c0a99ea89e7a0844",
+      "lines": 180,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html",
+        "docs/extending.html"
+      ],
+      "summary": "Built-in WebSocket tap plugin. Logs frames, records sessions to JSON, and supports PASS/DROP/MOCK/REPLAY rules."
     }
   }
 }

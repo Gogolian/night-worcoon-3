@@ -114,6 +114,10 @@
           <td><code>latency</code></td><td>object</td><td>no</td>
           <td>Config for the <code>latency</code> plugin.</td>
         </tr>
+        <tr>
+          <td><code>wsTap</code></td><td>object</td><td>no</td>
+          <td>Config for the <code>ws-tap</code> plugin.</td>
+        </tr>
       </tbody>
     </table>
 
@@ -194,7 +198,23 @@
   ]
 }</code></pre>
 
-    <h2>Rule matching (used by mock + latency)</h2>
+    <h3>wsTap</h3>
+<pre><code>"wsTap": {
+  "log": true,
+  "record": true,
+  "recordPath": "./recordings/myproxy-ws",
+  "rules": [
+    { "url": "/socket", "direction": "client", "textContains": "ping",
+      "action": "MOCK", "response": "pong" },
+    { "url": "/socket", "direction": "client", "action": "REPLAY",
+      "fallback": "PASS" }
+  ]
+}</code></pre>
+    <p>Actions: <code>PASS</code> · <code>DROP</code> · <code>MOCK</code> ·
+    <code>REPLAY</code>/<code>RET_REC</code>. <code>direction</code> is
+    <code>"client"</code> or <code>"server"</code>.</p>
+
+    <h2>Rule matching (used by mock + latency + ws-tap)</h2>
 
     <table>
       <thead><tr><th>Field</th><th>Behaviour</th></tr></thead>

@@ -88,6 +88,7 @@ for (const p of plugins) {
         <tr><td><a href="#bucket"><code>bucket</code></a></td>  <td>In-memory CRUD store, optional persistence.</td><td><code>bucket</code></td></tr>
         <tr><td><a href="#mock"><code>mock</code></a></td>      <td>Rule-based mock / replay from recordings.</td> <td><code>mock</code> · <code>ret_rec</code> · <code>ret_rec_fallback</code></td></tr>
         <tr><td><a href="#recorder"><code>recorder</code></a></td><td>Save real upstream responses.</td>          <td>— (only observes)</td></tr>
+        <tr><td><a href="#ws-tap"><code>ws-tap</code></a></td><td>Log, mock, record, and replay WS frames.</td><td><code>ws_tap_mock</code> · <code>ws_tap_replay</code> · <code>ws_tap_drop</code></td></tr>
       </tbody>
     </table>
 
@@ -294,6 +295,46 @@ for (const p of plugins) {
 
     <p>Each saved entry has the shape documented in
     <a href="storage.html">Storage → Recording shape</a>.</p>
+
+    <!-- ----- ws-tap ----- -->
+
+    <h2 id="ws-tap">ws-tap</h2>
+    <p>Source: <code>plugins/ws-tap.js</code></p>
+
+    <p>Runs in <code>onWsMessage</code> for every WebSocket text/binary frame.
+    It can log frames, persist sessions to JSON, drop or mock matching client
+    frames, and replay server frames from the newest recorded session for the
+    same path.</p>
+
+<pre><code>"wsTap": {
+  "log": true,
+  "record": true,
+  "recordPath": "./recordings/myproxy-ws",
+  "rules": [
+    { "url": "/socket", "direction": "client", "textContains": "ping",
+      "action": "MOCK", "response": "pong" },
+    { "url": "/socket", "direction": "client", "action": "REPLAY",
+      "fallback": "PASS" }
+  ]
+}</code></pre>
+
+    <h3>Actions</h3>
+
+    <table>
+      <thead><tr><th>Action</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>PASS</code></td><td>Forward the frame unchanged.</td></tr>
+        <tr><td><code>DROP</code></td><td>Suppress the frame and forward nothing.</td></tr>
+        <tr><td><code>MOCK</code></td><td>Drop the original by default and inject <code>response</code> to the opposite peer. Set <code>dropOriginal:false</code> to also forward the original.</td></tr>
+        <tr><td><code>REPLAY</code>/<code>RET_REC</code></td><td>Read the newest recorded session for the path and inject the next frame from the opposite direction. On miss, <code>fallback:"PASS"</code> forwards normally or <code>"DROP"</code> suppresses the frame.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Rule matching</h3>
+    <p>Rules use the same <code>url</code> / <code>urlContains</code> matching
+    helpers as HTTP mocks, plus optional <code>direction</code>
+    (<code>"client"</code> or <code>"server"</code>), <code>textContains</code>,
+    and <code>textEquals</code>.</p>
 
     <div class="footer">
       Next: <a href="storage.html">Storage →</a> · or

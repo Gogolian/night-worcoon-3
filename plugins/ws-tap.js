@@ -33,7 +33,17 @@ function makeResponseFrames(response) {
   const list = Array.isArray(response) ? response : [response];
   return list.filter((item) => item != null).map((item) => {
     if (Buffer.isBuffer(item)) return { body: item, binary: true };
-    if (typeof item === 'object' && 'body' in item) return item;
+    if (typeof item === 'object' && 'body' in item) {
+      if (
+        item.body != null
+        && typeof item.body !== 'string'
+        && !Buffer.isBuffer(item.body)
+        && item.binary !== true
+      ) {
+        return { ...item, body: JSON.stringify(item.body), binary: false };
+      }
+      return item;
+    }
     if (typeof item === 'object') return { body: JSON.stringify(item), binary: false };
     return { body: String(item), binary: false };
   });

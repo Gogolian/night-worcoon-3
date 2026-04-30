@@ -11,8 +11,7 @@
     "start:headless": "node src/index.js --headless"
   },
   "dependencies": {
-    "blessed": "^0.1.81",
-    "http-proxy": "^1.18.1"
+    "blessed": "^0.1.81"
   },
   "optionalDependencies": {
     "better-sqlite3": "^11.3.0"
