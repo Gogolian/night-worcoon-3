@@ -89,7 +89,7 @@
      │                  │ runOnRequest(plugins)    │             │
      │                  │ ────────────────────────  │             │
      │                  │  cors → latency → bucket  │             │
-     │                  │   → mock → recorder       │             │
+     │                  │   → mock → recorder → tap │             │
      │                  │                          │             │
      │                  │ stops at first plugin    │             │
      │                  │ that sets ctx.response   │             │
@@ -106,6 +106,7 @@
      │                  │ runOnResponse(plugins)   │             │
      │                  │ (every plugin runs;      │             │
      │                  │  e.g. recorder saves,    │             │
+     │                  │  tap emits TUI events,   │             │
      │                  │  cors adds headers)      │             │
      │                  └───────────┬──────────────┘             │
      │                              │                            │
@@ -120,7 +121,7 @@
       <code>onRequest</code> is for <em>short-circuiting</em> (mock, bucket
       hit, CORS preflight, injected failure). <code>onResponse</code> is for
       <em>observing or decorating</em> the final response (recorder saves it,
-      cors stamps headers on it).
+      tap streams it to the TUI, cors stamps headers on it).
     </div>
 
     <h2>The <code>ctx</code> object</h2>
@@ -152,6 +153,7 @@
     source: null | 'proxy' | 'mock' | 'ret_rec'
           | 'ret_rec_fallback' | 'bucket' | 'cors'
           | 'latency_fail',
+    startedAt,        // Date.now() timestamp captured when handling began
   },
 }</code></pre>
 

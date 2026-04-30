@@ -39,9 +39,9 @@
       <span class="label">TL;DR for the impatient</span>
       It's a Node.js reverse proxy where each request flows through a chain
       of plugins. Plugins can short-circuit with a fake response (mock),
-      replay an old recording, throttle traffic, or save real responses to
-      disk. You pick which plugins are active per <em>profile</em> (one JSON
-      file in <code>configs/</code>).
+      replay an old recording, throttle traffic, save real responses to disk,
+      or inspect live transactions in a Tap TUI tab. You pick which plugins
+      are active per <em>profile</em> (one JSON file in <code>configs/</code>).
     </div>
 
     <h2>Quick start</h2>
@@ -65,6 +65,11 @@ npm run start:headless -- --config httpbin.json # no TUI</code></pre>
         <h3>Record &amp; replay</h3>
         <p>Capture real upstream traffic, then replay it offline. Filesystem
         or SQLite backend.</p>
+      </div>
+      <div class="card">
+        <h3>Inspect live traffic</h3>
+        <p>The Tap tab streams request/response transactions with filters,
+        pause/resume, and copy-as-cURL.</p>
       </div>
       <div class="card">
         <h3>CRUD bucket</h3>
@@ -102,11 +107,11 @@ npm run start:headless -- --config httpbin.json # no TUI</code></pre>
     <h2>Project layout</h2>
 
 <pre><code>configs/        profile JSONs (one per proxy)
-plugins/        auto-loaded plugins (cors, latency, bucket, mock, recorder, your own)
+plugins/        auto-loaded plugins (cors, latency, bucket, mock, recorder, tap, your own)
 recordings/     default storage dir (gitignored)
 src/
   index.js      entry — picks TUI or --headless
-  tui.js        blessed UI (Configs / Logs / Mocks / Plugins / Help tabs)
+  tui.js        blessed UI (Configs / Logs / Mocks / Plugins / plugin / Help tabs)
   proxy.js      HTTP + WebSocket proxy + plugin pipeline runner
   plugins.js    plugin loader (auto-discovers files in plugins/)
   storage.js    filesystem + sqlite recording backends

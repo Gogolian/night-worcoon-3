@@ -45,7 +45,7 @@
   "port": 8080,
   "target": "https://httpbin.org",
   "changeOrigin": true,
-  "plugins": ["mock", "recorder"],
+  "plugins": ["mock", "recorder", "tap"],
   "storage": { "type": "fs", "path": "./recordings/httpbin" }
 }</code></pre>
 
@@ -120,11 +120,12 @@
     <div class="callout warn">
       <span class="label">Plugin order matters</span>
       <code>plugins</code> is the pipeline order. The recommended ordering is
-      <code>["cors", "latency", "bucket", "mock", "recorder"]</code> — that
+      <code>["cors", "latency", "bucket", "mock", "recorder", "tap"]</code> — that
       way <code>cors</code> handles preflights first, <code>latency</code>
       delays/fails before any work is done, <code>bucket</code> handles CRUD,
       <code>mock</code> handles canned/replayed responses, and
-      <code>recorder</code> only sees what actually went upstream.
+      <code>recorder</code> saves upstream traffic before <code>tap</code>
+      observes the final transaction stream.
     </div>
 
     <h2>Storage shorthand</h2>
@@ -157,6 +158,11 @@
     <h3>recorder</h3>
 <pre><code>"recorder": { "recordAll": false }</code></pre>
     <p><code>recordAll: true</code> also captures mocked / replayed responses.</p>
+
+    <h3>tap</h3>
+<pre><code>"plugins": ["mock", "recorder", "tap"]</code></pre>
+    <p><code>tap</code> has no config block; enabling it adds the Tap TUI tab
+    and emits live transaction events for filtering and copy-as-cURL.</p>
 
     <h3>bucket</h3>
 <pre><code>"bucket": {
@@ -214,7 +220,7 @@
     <h2>Worked examples shipped with the repo</h2>
 
     <ul class="clean">
-      <li><code>configs/httpbin.json</code> — mock + recorder against httpbin.</li>
+      <li><code>configs/httpbin.json</code> — mock + recorder + tap against httpbin.</li>
       <li><code>configs/example-bucket.json</code> — bucket + mock + recorder, three collections, three id patterns.</li>
       <li><code>configs/example-sqlite.json</code> — same idea but with SQLite storage.</li>
     </ul>

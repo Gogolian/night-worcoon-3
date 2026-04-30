@@ -41,6 +41,7 @@ Building against a flaky third-party API? Need to replay yesterday's traffic? Wa
 - 🪣 **Built-in Bucket** — instant CRUD datastore (`POST/GET/PATCH/PUT/DELETE`) for prototyping.
 - 🎭 **Rule-based mocks** — `PASS`, `MOCK`, `RET_REC` (replay from recordings) with fallbacks.
 - 📼 **Recorder** — capture real upstream responses to disk or SQLite for later replay.
+- 🔎 **Tap inspector** — live request/response TUI tab with filters and copy-as-cURL.
 - 🐢 **Chaos / latency** — inject delays, jitter, and random failures globally or per-rule.
 - 🌐 **CORS plugin** — preflight handling and response augmentation out of the box.
 - 🔌 **WebSocket pass-through** — `ws://` upgrades are forwarded transparently.
@@ -55,6 +56,7 @@ Building against a flaky third-party API? Need to replay yesterday's traffic? Wa
 - [Mock plugin](#-mock-plugin)
 - [Bucket plugin](#-bucket-plugin)
 - [Recorder & Storage](#-recorder--storage)
+- [Tap inspector](#-tap-inspector)
 - [Latency plugin](#-latency-plugin)
 - [CORS plugin](#-cors-plugin)
 - [Writing your own plugin](#-writing-your-own-plugin)
@@ -114,7 +116,7 @@ Each file in `configs/` is one proxy profile. The full shape:
   "followRedirects": false,
 
   // pipeline order; only listed plugins run
-  "plugins": ["cors", "latency", "bucket", "mock", "recorder"],
+  "plugins": ["cors", "latency", "bucket", "mock", "recorder", "tap"],
 
   // recording backend (used by `recorder` and `RET_REC`)
   "storage": { "type": "fs",     "path": "./recordings/httpbin" },
@@ -128,7 +130,7 @@ Each file in `configs/` is one proxy profile. The full shape:
 }
 ```
 
-Recommended plugin order: **`["cors", "latency", "bucket", "mock", "recorder"]`** — security/transport first, simulation next, data layer, rule-based behavior, then observation.
+Recommended plugin order: **`["cors", "latency", "bucket", "mock", "recorder", "tap"]`** — security/transport first, simulation next, data layer, rule-based behavior, then observers.
 
 ## 🎭 Mock plugin
 
@@ -213,6 +215,20 @@ Bodies are stored as UTF‑8 when printable, otherwise base64.
 "recorder": { "recordAll": false }   // true → record every request, not just mock-matched
 ```
 
+## 🔎 Tap inspector
+
+Add `tap` to a profile's `plugins` array to expose a live **Tap** tab in the TUI. It streams every completed HTTP transaction with method, status, latency, response size, source, and URL.
+
+Keys in the Tap tab:
+
+| key | action |
+| --- | ------ |
+| `/` | filter by URL substring |
+| `f` | filter by status (`200`, `2xx`, `400-499`, `>=500`) |
+| `p` | pause/resume the live stream |
+| `c` / `enter` | copy the selected request as a cURL command |
+| `x` | clear the in-memory tap buffer |
+
 ## 🐢 Latency plugin
 
 Simulate slow networks, flaky services, and tail-latency outliers:
@@ -287,6 +303,7 @@ ctx = {
 | `bucket`   | built-in mock datastore (CRUD, see above)                   |
 | `mock`     | rule-based mock / replay from recordings                    |
 | `recorder` | save real upstream responses                                |
+| `tap`      | live request/response inspector in the TUI                  |
 | `latency`  | inject delay + random failures (chaos testing)              |
 | `cors`     | add CORS headers + handle `OPTIONS` preflight               |
 
