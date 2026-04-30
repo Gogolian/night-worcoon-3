@@ -1,88 +1,171 @@
-# night-worcoon-3
+<div align="center">
 
-TUI-driven middleware proxy (HTTP + WebSocket) with a pluggable pipeline,
-built-in **Mock** and **Recorder** plugins, and pick-at-runtime config
-profiles.
+# 🌙 night-worcoon-3
 
-## Run
+**A TUI-driven middleware proxy for HTTP & WebSocket — mock, record, replay, and chaos-test any API from your terminal.**
 
-```bash
-npm install
-npm start                                 # TUI
-npm run start:headless -- --config httpbin.json   # no TUI
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A518-brightgreen.svg)](https://nodejs.org)
+[![Made with JavaScript](https://img.shields.io/badge/made%20with-JavaScript-f7df1e.svg)](https://nodejs.org)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
+
+*Pick a config, hit enter, and you're proxying. Drop in plugins to mock, replay, throttle, or break things on demand.*
+
+</div>
+
+---
+
+## ✨ Why night-worcoon-3?
+
+Building against a flaky third-party API? Need to replay yesterday's traffic? Want to see how your client behaves on a slow 3G connection or when the backend returns a 503 every fifth request?
+
+`night-worcoon-3` sits between your client and any HTTP/WebSocket target as a **middleware proxy with a pluggable pipeline**. You drive it from a tiny terminal UI, swap config profiles on the fly, and compose behavior from a small set of focused plugins.
+
+```
+┌──────────┐       ┌─────────────────────────────────────────┐       ┌──────────┐
+│  client  │ ────▶ │  cors → latency → bucket → mock → rec   │ ────▶ │  target  │
+└──────────┘       └─────────────────────────────────────────┘       └──────────┘
+                              night-worcoon-3 pipeline
 ```
 
-In the TUI:
+## 🚀 Features
 
-| key | action |
-|-----|--------|
-| ↑ / ↓ | navigate configs |
-| enter | start selected proxy |
-| s | stop active proxy |
-| r | reload configs list |
-| q / Ctrl-C | quit |
+- 🖥️ **Interactive TUI** — pick configs, start/stop proxies, reload on the fly (powered by [`blessed`](https://github.com/chjj/blessed)).
+- 🤖 **Headless mode** — run a single config from CI or scripts with `--headless`.
+- 🧩 **Pluggable pipeline** — auto-loaded plugins, ordered per profile, short-circuit semantics.
+- 🪣 **Built-in Bucket** — instant CRUD datastore (`POST/GET/PATCH/PUT/DELETE`) for prototyping.
+- 🎭 **Rule-based mocks** — `PASS`, `MOCK`, `RET_REC` (replay from recordings) with fallbacks.
+- 📼 **Recorder** — capture real upstream responses to disk or SQLite for later replay.
+- 🐢 **Chaos / latency** — inject delays, jitter, and random failures globally or per-rule.
+- 🌐 **CORS plugin** — preflight handling and response augmentation out of the box.
+- 🔌 **WebSocket pass-through** — `ws://` upgrades are forwarded transparently.
+- 💾 **Pluggable storage** — filesystem JSON or SQLite (optional dep).
+- 📦 **Zero scaffolding** — drop a JSON in `configs/`, drop a `.js` in `plugins/`, done.
 
-## Configs
+## 📚 Table of Contents
 
-Drop JSON files into [configs/](configs/). Each file is one proxy profile:
+- [Quick Start](#-quick-start)
+- [The TUI](#-the-tui)
+- [Configuration](#-configuration)
+- [Mock plugin](#-mock-plugin)
+- [Bucket plugin](#-bucket-plugin)
+- [Recorder & Storage](#-recorder--storage)
+- [Latency plugin](#-latency-plugin)
+- [CORS plugin](#-cors-plugin)
+- [Writing your own plugin](#-writing-your-own-plugin)
+- [WebSocket](#-websocket)
+- [Project layout](#-project-layout)
+- [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+## ⚡ Quick Start
+
+```bash
+# 1. install
+npm install
+
+# 2. launch the TUI and pick a config
+npm start
+
+# …or run a single profile headless (great for CI / Docker)
+npm run start:headless -- --config httpbin.json
+```
+
+That's it. The bundled [`configs/httpbin.json`](configs/httpbin.json) profile boots a proxy on `:8080` that fronts `https://httpbin.org`, mocks `GET /mock/hello`, and replays `GET /users/:id` from previous recordings.
+
+```bash
+curl http://localhost:8080/mock/hello
+# => {"message":"hello from night-worcoon-3"}
+```
+
+> **Requirements:** Node.js ≥ 18. SQLite storage requires `better-sqlite3` (installed automatically as an optional dependency).
+
+## 🎛 The TUI
+
+Launch with `npm start` and you get a config picker:
+
+| key          | action                          |
+| ------------ | ------------------------------- |
+| `↑` / `↓`    | navigate configs                |
+| `enter`      | start the selected proxy        |
+| `s`          | stop the active proxy           |
+| `r`          | reload the configs list         |
+| `q` / `Ctrl-C` | quit                          |
+
+Add or edit a JSON in [`configs/`](configs/), press `r`, and your new profile shows up — no restart required.
+
+## ⚙️ Configuration
+
+Each file in `configs/` is one proxy profile. The full shape:
 
 ```jsonc
 {
-  "name": "httpbin",
-  "port": 8080,
-  "target": "https://httpbin.org",
+  "name": "httpbin",                    // shown in the TUI
+  "port": 8080,                         // local listen port
+  "target": "https://httpbin.org",      // upstream
   "requestHeaders": { "X-Forwarded-By": "night-worcoon-3" },
   "changeOrigin": true,
   "followRedirects": false,
 
-  "plugins": ["mock", "recorder"],
+  // pipeline order; only listed plugins run
+  "plugins": ["cors", "latency", "bucket", "mock", "recorder"],
 
+  // recording backend (used by `recorder` and `RET_REC`)
   "storage": { "type": "fs",     "path": "./recordings/httpbin" },
   // or:    { "type": "sqlite", "path": "./recordings/httpbin.db" }
 
-  "mock": {
-    "rules": [
-      { "method": "GET", "url": "/users/:id", "action": "RET_REC", "fallback": "PASS" },
-      { "method": "POST", "url": "/login",    "action": "MOCK",
-        "response": { "status": 200, "body": { "token": "abc" } } },
-      { "method": "*", "urlContains": "/debug", "action": "PASS" }
-    ]
-  },
-
-  "recorder": { "recordAll": false }
+  "mock":     { /* see below */ },
+  "bucket":   { /* see below */ },
+  "recorder": { "recordAll": false },
+  "latency":  { /* see below */ },
+  "cors":     { /* see below */ }
 }
 ```
 
-### Mock actions
+Recommended plugin order: **`["cors", "latency", "bucket", "mock", "recorder"]`** — security/transport first, simulation next, data layer, rule-based behavior, then observation.
 
-* `PASS` — forward to the real target (same as no rule).
-* `MOCK` — return the inline `response`.
-* `RET_REC` — replay from storage.
-  * No query string → newest match for method + path.
-  * Query string → exact method + path + query match only.
-  * Miss → `fallback`: `"PASS"`, `"empty200"`, or `"500"` (default).
+## 🎭 Mock plugin
 
-### Rule matching
+Match incoming requests against a list of rules and decide what to do:
 
-* `url: "/users/:id"` — dynamic segment regex.
-* `url: "/exact/path"` — exact.
-* `urlContains: "/api"` — substring.
-* `method: "*"` — any verb.
+```jsonc
+"mock": {
+  "rules": [
+    { "method": "GET",  "url": "/users/:id", "action": "RET_REC", "fallback": "PASS" },
+    { "method": "POST", "url": "/login",     "action": "MOCK",
+      "response": { "status": 200, "body": { "token": "abc" } } },
+    { "method": "*",    "urlContains": "/debug", "action": "PASS" }
+  ]
+}
+```
 
-## Storage
+**Actions**
 
-Configured per profile. Both are supported:
+| action     | behavior                                                                  |
+| ---------- | ------------------------------------------------------------------------- |
+| `PASS`     | forward to the real target (same as no rule)                              |
+| `MOCK`     | return the inline `response`                                              |
+| `RET_REC`  | replay from storage                                                       |
 
-* `fs` — one JSON per recording under `path/`.
-* `sqlite` — single DB file (requires `better-sqlite3`, installed as
-  an optional dep).
+`RET_REC` lookup rules:
 
-Bodies are stored as UTF‑8 when printable, else base64.
+- No query string → newest match for `method` + `path`.
+- With query string → exact `method` + `path` + `query` match only.
+- Miss → `fallback`: `"PASS"`, `"empty200"`, or `"500"` (default).
 
-## Bucket (built-in mock datastore)
+**Rule matching**
 
-Enable by adding `"bucket"` to `plugins` (typically **before** `mock`) and a
-`bucket` section:
+| field          | meaning                                |
+| -------------- | -------------------------------------- |
+| `url: "/users/:id"` | dynamic segment regex             |
+| `url: "/exact/path"` | exact match                       |
+| `urlContains: "/api"` | substring match                  |
+| `method: "*"`  | any verb                               |
+
+## 🪣 Bucket plugin
+
+A built-in mock datastore — get a working CRUD API in seconds, no upstream required. Add `"bucket"` to `plugins` (typically **before** `mock`) and configure collections:
 
 ```jsonc
 "plugins": ["bucket", "mock", "recorder"],
@@ -97,41 +180,37 @@ Enable by adding `"bucket"` to `plugins` (typically **before** `mock`) and a
 }
 ```
 
-| method | path | effect |
-|--------|------|--------|
-| `POST`   | `/coll`      | create resource, auto-generate id (or honor `body.id` if it matches the pattern) → `201` |
-| `GET`    | `/coll`      | list all resources → `200` |
-| `GET`    | `/coll/:id`  | fetch one → `200`, or miss → falls through |
-| `PATCH`  | `/coll/:id`  | shallow merge → `200`, or miss → falls through |
-| `PUT`    | `/coll/:id`  | replace (id preserved) → `200`, or miss → falls through |
-| `DELETE` | `/coll/:id`  | remove → `204`, or miss → falls through |
+| method   | path        | effect                                                                          |
+| -------- | ----------- | ------------------------------------------------------------------------------- |
+| `POST`   | `/coll`     | create resource, auto-generate id (or honor `body.id` if it matches) → `201`    |
+| `GET`    | `/coll`     | list all resources → `200`                                                      |
+| `GET`    | `/coll/:id` | fetch one → `200`, or miss → falls through                                      |
+| `PATCH`  | `/coll/:id` | shallow merge → `200`, or miss → falls through                                  |
+| `PUT`    | `/coll/:id` | replace (id preserved) → `200`, or miss → falls through                         |
+| `DELETE` | `/coll/:id` | remove → `204`, or miss → falls through                                         |
 
-Supported `idPattern` values: `uuid`, `numeric` (auto-increment), `alphanumeric`
-(random 8 chars), or `regex:<pattern>` for validation. Numeric counters are
-rebuilt from persisted data on startup so ids are never reused after a restart.
+Supported `idPattern` values: `uuid`, `numeric` (auto-increment), `alphanumeric` (random 8 chars), or `regex:<pattern>` for validation. Numeric counters are rebuilt from persisted data on startup, so ids are never reused after a restart.
 
-Misses are **non-blocking**: unmatched paths or unknown ids leave `ctx.response`
-null, so the request continues down the pipeline (Mock → upstream proxy). See
-[configs/example-bucket.json](configs/example-bucket.json).
+Misses are **non-blocking**: unmatched paths or unknown ids leave `ctx.response` null, so the request continues down the pipeline (Mock → upstream proxy). See [`configs/example-bucket.json`](configs/example-bucket.json).
 
-## Plugins
+## 📼 Recorder & Storage
 
-Auto-loaded from [plugins/](plugins/). The order in `config.plugins` is
-the pipeline order: `onRequest` runs top-to-bottom and stops at the first
-plugin that sets `ctx.response`; `onResponse` runs top-to-bottom for all
-loaded plugins. Built-in plugins:
+The `recorder` plugin saves real upstream responses so they can be replayed later via `RET_REC`. Storage is configured per profile:
 
-| name | purpose |
-|------|---------|
-| `bucket`   | built-in mock datastore (CRUD, see above) |
-| `mock`     | rule-based mock / replay from recordings |
-| `recorder` | save real upstream responses |
-| `latency`  | inject delay + random failures (chaos testing) |
-| `cors`     | add CORS headers + handle OPTIONS preflight |
+| backend  | storage                                                       |
+| -------- | ------------------------------------------------------------- |
+| `fs`     | one JSON file per recording, under `path/`                    |
+| `sqlite` | single DB file (requires `better-sqlite3`, optional dep)      |
 
-Recommended ordering: `["cors", "latency", "bucket", "mock", "recorder"]`.
+Bodies are stored as UTF‑8 when printable, otherwise base64.
 
-### latency
+```jsonc
+"recorder": { "recordAll": false }   // true → record every request, not just mock-matched
+```
+
+## 🐢 Latency plugin
+
+Simulate slow networks, flaky services, and tail-latency outliers:
 
 ```jsonc
 "latency": {
@@ -140,16 +219,15 @@ Recommended ordering: `["cors", "latency", "bucket", "mock", "recorder"]`.
   "failRate": 0.1,
   "failStatus": 503,
   "rules": [
-    { "urlContains": "/slow", "delayMs": 3000 },
+    { "urlContains": "/slow",          "delayMs": 3000 },
     { "method": "POST", "url": "/api/flaky", "failRate": 0.5 }
   ]
 }
 ```
 
-Per-rule settings override defaults. Delay is applied before any other
-request hook, so it affects mocked/bucketed responses too.
+Per-rule settings override defaults. Delay is applied **before any other request hook**, so it affects mocked and bucketed responses too — handy for end-to-end loading-state tests.
 
-### cors
+## 🌐 CORS plugin
 
 ```jsonc
 "cors": {
@@ -161,13 +239,11 @@ request hook, so it affects mocked/bucketed responses too.
 }
 ```
 
-`origin` can be `"*"`, a single origin string, or an array of allowed
-origins. Preflight `OPTIONS` requests get a `204` short-circuit; every
-other response is augmented with the CORS headers.
+`origin` can be `"*"`, a single origin string, or an array of allowed origins. Preflight `OPTIONS` requests get a `204` short-circuit; every other response is augmented with the CORS headers.
 
-### Writing your own
+## 🛠 Writing your own plugin
 
-Each file `export default`s either an object or a factory:
+Drop a `.js` file in [`plugins/`](plugins/). Each file `export default`s either an object or a factory:
 
 ```js
 export default function create({ config, logger }) {
@@ -175,40 +251,78 @@ export default function create({ config, logger }) {
     name: 'my-plugin',
     async init({ config, logger }) { /* optional */ },
     async onRequest(ctx)  { /* set ctx.response to short-circuit */ },
-    async onResponse(ctx) { /* observe / mutate final response */ },
+    async onResponse(ctx) { /* observe / mutate the final response */ },
   };
 }
 ```
 
-A plugin only runs if its `name` is listed in the profile's `plugins`
-array. `ctx` shape:
+A plugin only runs if its `name` is listed in the profile's `plugins` array.
 
-```
+**Pipeline semantics**
+
+- `onRequest` runs **top-to-bottom** and stops at the first plugin that sets `ctx.response`.
+- `onResponse` runs **top-to-bottom** for all loaded plugins, regardless of who produced the response.
+
+**`ctx` shape**
+
+```ts
 ctx = {
   config, storage, logger,
   req: { method, url, path, query, headers, body: Buffer },
   response: null | { status, headers, body: Buffer },
-  meta: { source: null | 'proxy' | 'mock' | 'ret_rec' | 'ret_rec_fallback' | 'bucket' | 'cors' | 'latency_fail' }
+  meta: { source: null | 'proxy' | 'mock' | 'ret_rec' | 'ret_rec_fallback'
+                       | 'bucket' | 'cors' | 'latency_fail' }
 }
 ```
 
-## WebSocket
+**Built-in plugins reference**
 
-`ws://` upgrades on the listening port are forwarded to `target`
-using `http-proxy`. Plugin hooks don't see WS traffic yet (planned).
+| name       | purpose                                                     |
+| ---------- | ----------------------------------------------------------- |
+| `bucket`   | built-in mock datastore (CRUD, see above)                   |
+| `mock`     | rule-based mock / replay from recordings                    |
+| `recorder` | save real upstream responses                                |
+| `latency`  | inject delay + random failures (chaos testing)              |
+| `cors`     | add CORS headers + handle `OPTIONS` preflight               |
 
-## Layout
+## 🔌 WebSocket
+
+`ws://` upgrades on the listening port are forwarded to `target` using [`http-proxy`](https://github.com/http-party/node-http-proxy). Plugin hooks don't see WS traffic yet (planned — see [Roadmap](#-roadmap)).
+
+## 🗂 Project layout
 
 ```
-configs/        profile JSONs
+configs/        profile JSONs — one per proxy
 plugins/        auto-loaded plugins (mock, recorder, your own)
 recordings/     default storage dir (gitignored)
 src/
   index.js      entry (TUI or --headless)
   tui.js        blessed UI
-  proxy.js     HTTP + WS proxy + hook pipeline
+  proxy.js      HTTP + WS proxy + hook pipeline
   plugins.js    plugin loader
   storage.js    fs + sqlite backends
   match.js      URL/rule matching
   logger.js     EventEmitter logger
 ```
+
+## 🗺 Roadmap
+
+- [ ] Plugin hooks for WebSocket frames (record / mock / replay)
+- [ ] HTTPS upstream cert pinning options
+- [ ] Live request log pane in the TUI
+- [ ] Hot-reload of running proxies on config change
+
+Have an idea? [Open an issue](../../issues) or jump straight to a PR.
+
+## 🤝 Contributing
+
+PRs welcome! The codebase is small and dependency-light on purpose — it should stay that way.
+
+1. Fork & branch.
+2. Keep the public surface (config schema, `ctx` shape, plugin contract) backwards-compatible, or call it out clearly.
+3. Add a config under `configs/` if you're demoing a new feature.
+4. Run `npm start` against a real or `httpbin` target to smoke-test before opening the PR.
+
+## 📄 License
+
+[MIT](LICENSE) © night-worcoon-3 contributors.
