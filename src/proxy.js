@@ -1,11 +1,11 @@
 import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
-import httpProxy from 'http-proxy';
 
 import { loadPlugins, runOnRequest, runOnResponse } from './plugins.js';
 import { createStorage } from './storage.js';
 import { splitPathQuery } from './match.js';
+import { proxyWebSocketUpgrade } from './ws-proxy.js';
 
 const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
 
@@ -126,15 +126,6 @@ export async function startProxy({ config, configDir, logger, pluginsDir }) {
   const storage = await createStorage({ config, logger, configDir });
   const plugins = await loadPlugins({ pluginsDir, config, logger });
 
-  // WebSocket passthrough proxy (no plugin interception for v1).
-  const wsProxy = httpProxy.createProxyServer({
-    target: config.target,
-    changeOrigin: !!config.changeOrigin,
-    ws: true,
-    secure: config.secure !== false,
-  });
-  wsProxy.on('error', (err) => logger.error(`ws proxy error: ${err.message}`));
-
   const server = http.createServer(async (req, res) => {
     const startedAt = Date.now();
     const { path: urlPath, query } = splitPathQuery(req.url || '/');
@@ -178,7 +169,9 @@ export async function startProxy({ config, configDir, logger, pluginsDir }) {
 
   server.on('upgrade', (req, socket, head) => {
     logger.trace('ws-upgrade', { url: req.url });
-    wsProxy.ws(req, socket, head);
+    proxyWebSocketUpgrade({
+      req, socket, head, config, storage, logger, plugins,
+    });
   });
 
   await new Promise((resolve, reject) => {
@@ -195,7 +188,6 @@ export async function startProxy({ config, configDir, logger, pluginsDir }) {
     server,
     async stop() {
       await new Promise((r) => server.close(() => r()));
-      try { wsProxy.close(); } catch {}
       logger.info(`proxy "${config.name}" stopped`);
     },
   };

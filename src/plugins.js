@@ -5,7 +5,7 @@ import url from 'node:url';
 /**
  * Auto-load all plugins from ./plugins/*.js (relative to repo root).
  * Each plugin file must `export default` an object or a factory function:
- *   export default { name, onRequest?, onResponse?, init? }
+ *   export default { name, onRequest?, onResponse?, onWsMessage?, init? }
  *   export default (ctx) => ({ name, ... })   // factory gets { config, logger }
  *
  * A plugin is only instantiated for a config if its name is present in
@@ -67,6 +67,15 @@ export async function runOnResponse(plugins, ctx) {
   for (const p of plugins) {
     if (typeof p.onResponse === 'function') {
       await p.onResponse(ctx);
+    }
+  }
+  return ctx;
+}
+
+export async function runOnWsMessage(plugins, ctx) {
+  for (const p of plugins) {
+    if (typeof p.onWsMessage === 'function') {
+      await p.onWsMessage(ctx);
     }
   }
   return ctx;
