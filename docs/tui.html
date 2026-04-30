@@ -35,7 +35,7 @@
       Run <code>npm start</code> and you get a terminal UI built on
       <a href="https://github.com/chjj/blessed">blessed</a> with the core tabs
       Configs, Logs, Mocks, Plugins, Help plus any enabled plugin tabs such as
-      Tap or Bucket. The proxy itself runs in the same Node process; the TUI
+      POST, Tap, or Bucket. The proxy itself runs in the same Node process; the TUI
       just controls it.
     </div>
 
@@ -72,6 +72,12 @@ npm run start:headless -- --config httpbin.json # no TUI, just the proxy</code><
         <p>When the <code>tap</code> plugin is enabled, inspect live HTTP
         transactions, filter by URL/status, pause the stream, and copy the
         selected request as cURL.</p>
+      </div>
+      <div class="card">
+        <h3>POST</h3>
+        <p>When the <code>post</code> plugin is enabled, send ad-hoc HTTP
+        requests either directly to the configured target or through
+        <code>localhost:&lt;port&gt;</code> so the plugin pipeline runs.</p>
       </div>
       <div class="card">
         <h3>Metrics</h3>

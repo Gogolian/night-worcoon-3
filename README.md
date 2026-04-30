@@ -40,6 +40,7 @@ Building against a flaky third-party API? Need to replay yesterday's traffic? Wa
 - 🧩 **Pluggable pipeline** — auto-loaded plugins, ordered per profile, short-circuit semantics.
 - 🪣 **Built-in Bucket** — instant CRUD datastore (`POST/GET/PATCH/PUT/DELETE`) for prototyping.
 - 🎭 **Rule-based mocks** — `PASS`, `MOCK`, `RET_REC` (replay from recordings) with fallbacks.
+- ⚡ **POST request client** — send ad-hoc requests from the TUI to the end system or through NightWorcoon’s plugin pipeline.
 - 📼 **Recorder** — capture real upstream responses to disk or SQLite for later replay.
 - 🧪 **Diff shadowing** — replay a recording while also querying upstream, then report status/header/JSON drift.
 - 🔎 **Tap inspector** — live request/response TUI tab with filters and copy-as-cURL.
@@ -56,6 +57,7 @@ Building against a flaky third-party API? Need to replay yesterday's traffic? Wa
 - [Configuration](#-configuration)
 - [Mock plugin](#-mock-plugin)
 - [Bucket plugin](#-bucket-plugin)
+- [POST request client](#-post-request-client)
 - [Recorder & Storage](#-recorder--storage)
 - [Tap inspector](#-tap-inspector)
 - [Latency plugin](#-latency-plugin)
@@ -117,7 +119,7 @@ Each file in `configs/` is one proxy profile. The full shape:
   "followRedirects": false,
 
   // pipeline order; only listed plugins run
-  "plugins": ["cors", "latency", "bucket", "mock", "diff", "recorder", "tap", "ws-tap"],
+  "plugins": ["post", "cors", "latency", "bucket", "mock", "diff", "recorder", "tap", "ws-tap"],
 
   // recording backend (used by `recorder` and `RET_REC`)
   "storage": { "type": "fs",     "path": "./recordings/httpbin" },
@@ -133,7 +135,7 @@ Each file in `configs/` is one proxy profile. The full shape:
 }
 ```
 
-Recommended plugin order: **`["cors", "latency", "bucket", "mock", "diff", "recorder", "tap"]`** — security/transport first, simulation next, data layer, rule-based behavior, then observers.
+Recommended plugin order: **`["post", "cors", "latency", "bucket", "mock", "diff", "recorder", "tap"]`** — request-client UI first, security/transport next, simulation next, data layer, rule-based behavior, then observers.
 
 ## 🎭 Mock plugin
 
@@ -247,6 +249,16 @@ Keys in the Tap tab:
 | `c` / `enter` | copy the selected request as a cURL command |
 | `x` | clear the in-memory tap buffer |
 
+## ⚡ POST request client
+
+Add `post` to a profile's `plugins` array to expose a **POST** tab in the TUI. It is a terminal request client inspired by the POST view in night-worcoon2:
+
+- **End System** sends directly to the selected config's `target`, merging `requestHeaders` with any headers edited in the tab.
+- **NightWorcoon** sends to `localhost:<port>`, so the normal plugin pipeline runs (`bucket`, `mock`, `recorder`, `tap`, and so on).
+- The tab supports editing method, path, headers JSON, body, and then displays status, headers, latency, final URL, and response body.
+
+The runtime plugin is intentionally a no-op; it exists so the TUI tab can be enabled per profile just like the other plugins.
+
 ## 🐢 Latency plugin
 
 Simulate slow networks, flaky services, and tail-latency outliers:
@@ -320,6 +332,7 @@ ctx = {
 | ---------- | ----------------------------------------------------------- |
 | `bucket`   | built-in mock datastore (CRUD, see above)                   |
 | `mock`     | rule-based mock / replay from recordings                    |
+| `post`     | TUI request client for direct or pipeline-routed requests    |
 | `recorder` | save real upstream responses                                |
 | `tap`      | live request/response inspector in the TUI                  |
 | `latency`  | inject delay + random failures (chaos testing)              |

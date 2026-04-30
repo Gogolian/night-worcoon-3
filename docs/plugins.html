@@ -87,6 +87,7 @@ for (const p of plugins) {
         <tr><td><a href="#latency"><code>latency</code></a></td><td>Inject delay + random failures.</td>          <td><code>latency_fail</code> (on inject)</td></tr>
         <tr><td><a href="#bucket"><code>bucket</code></a></td>  <td>In-memory CRUD store, optional persistence.</td><td><code>bucket</code></td></tr>
         <tr><td><a href="#mock"><code>mock</code></a></td>      <td>Rule-based mock / replay from recordings.</td> <td><code>mock</code> · <code>ret_rec</code> · <code>ret_rec_fallback</code></td></tr>
+        <tr><td><a href="#post"><code>post</code></a></td>      <td>TUI request client for direct or pipeline-routed requests.</td><td>— (TUI only)</td></tr>
         <tr><td><a href="#diff"><code>diff</code></a></td>      <td>Shadow replayed recordings and report upstream drift.</td><td>— (only observes)</td></tr>
         <tr><td><a href="#recorder"><code>recorder</code></a></td><td>Save real upstream responses.</td>          <td>— (only observes)</td></tr>
         <tr><td><a href="#metrics"><code>metrics</code></a></td><td>Per-route counters, latency histograms, error rates, bytes in/out. Prometheus endpoint + TUI tab.</td><td><code>metrics</code> (endpoint only)</td></tr>
@@ -97,7 +98,7 @@ for (const p of plugins) {
     </table>
 
     <p>Recommended ordering when using all of them:
-    <code>["metrics", "cors", "latency", "bucket", "mock", "diff", "recorder", "tap", "ws-tap", "har-export"]</code>.</p>
+    <code>["post", "metrics", "cors", "latency", "bucket", "mock", "diff", "recorder", "tap", "ws-tap", "har-export"]</code>.</p>
 
     <!-- ----- cors ----- -->
 
@@ -220,6 +221,28 @@ for (const p of plugins) {
     that file (pretty-printed JSON) after every mutation. On startup, state
     is reloaded and <code>numeric</code> counters are recomputed from the
     largest existing id.</p>
+
+    <!-- ----- post ----- -->
+
+    <h2 id="post">post</h2>
+    <p>Sources: <code>plugins/post.js</code> · <code>plugins/post.tui.js</code></p>
+
+    <p><code>post</code> is a no-op runtime plugin whose companion TUI tab
+    provides an ad-hoc HTTP request client. Add <code>"post"</code> to
+    <code>plugins</code> to expose the <strong>POST</strong> tab for the
+    selected profile.</p>
+
+    <ul class="clean">
+      <li><strong>End System</strong> sends directly to the profile's
+      <code>target</code>, merging <code>requestHeaders</code> with headers
+      edited in the tab.</li>
+      <li><strong>NightWorcoon</strong> sends to
+      <code>localhost:&lt;port&gt;</code>, so normal plugins such as
+      <code>bucket</code>, <code>mock</code>, <code>recorder</code>, and
+      <code>tap</code> run.</li>
+      <li>The tab edits method, path, headers JSON, and body, then displays
+      status, latency, response headers, final URL, and response body.</li>
+    </ul>
 
     <!-- ----- mock ----- -->
 

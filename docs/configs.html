@@ -45,7 +45,7 @@
   "port": 8080,
   "target": "https://httpbin.org",
   "changeOrigin": true,
-  "plugins": ["mock", "recorder", "tap"],
+  "plugins": ["post", "mock", "recorder", "tap"],
   "storage": { "type": "fs", "path": "./recordings/httpbin" }
 }</code></pre>
 
@@ -132,9 +132,9 @@
     <div class="callout warn">
       <span class="label">Plugin order matters</span>
       <code>plugins</code> is the pipeline order. The recommended ordering is
-      <code>["metrics", "cors", "latency", "bucket", "mock", "diff", "recorder", "tap"]</code> — that
-      way <code>metrics</code> observes every response first, <code>cors</code>
-      handles preflights, <code>latency</code> delays/fails before any work is
+      <code>["post", "metrics", "cors", "latency", "bucket", "mock", "diff", "recorder", "tap"]</code> — that
+      way <code>post</code> enables the request-client tab, <code>metrics</code> observes every response,
+      <code>cors</code> handles preflights, <code>latency</code> delays/fails before any work is
       done, <code>bucket</code> handles CRUD, <code>mock</code> handles
       canned/replayed responses, <code>diff</code> shadows replayed recordings,
       and <code>recorder</code> saves upstream traffic before <code>tap</code>
@@ -183,9 +183,15 @@
     to upstream and reports status, header, and JSON body drift.</p>
 
     <h3>tap</h3>
-<pre><code>"plugins": ["mock", "recorder", "tap"]</code></pre>
+<pre><code>"plugins": ["post", "mock", "recorder", "tap"]</code></pre>
     <p><code>tap</code> has no config block; enabling it adds the Tap TUI tab
     and emits live transaction events for filtering and copy-as-cURL.</p>
+
+    <h3>post</h3>
+<pre><code>"plugins": ["post", "mock", "recorder", "tap"]</code></pre>
+    <p><code>post</code> has no config block; enabling it adds the POST TUI
+    tab, a request client that can send directly to <code>target</code> or to
+    <code>localhost:&lt;port&gt;</code> so the plugin pipeline runs.</p>
 
     <h3>bucket</h3>
 <pre><code>"bucket": {
