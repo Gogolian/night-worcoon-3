@@ -283,7 +283,7 @@ export default {
       renderAll();
     }
 
-    async function send() {
+    async function executeRequest() {
       const cfg = currentCfg();
       if (!cfg) {
         error = 'select a valid config first';
@@ -313,7 +313,7 @@ export default {
       else if (selected === 2) await editPath();
       else if (selected === 3) await editHeaders();
       else if (selected === 4) await editBody();
-      else if (selected === 5) await send();
+      else if (selected === 5) await executeRequest();
       renderAll();
     }
 
