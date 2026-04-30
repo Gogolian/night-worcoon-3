@@ -67,6 +67,11 @@ npm run start:headless -- --config httpbin.json # no TUI</code></pre>
         or SQLite backend.</p>
       </div>
       <div class="card">
+        <h3>Diff shadow replays</h3>
+        <p>Replay recordings while still querying upstream in shadow mode,
+        then log status, header, and JSON body drift.</p>
+      </div>
+      <div class="card">
         <h3>Inspect live traffic</h3>
         <p>The Tap tab streams request/response transactions with filters,
         pause/resume, and copy-as-cURL.</p>
@@ -107,7 +112,7 @@ npm run start:headless -- --config httpbin.json # no TUI</code></pre>
     <h2>Project layout</h2>
 
 <pre><code>configs/        profile JSONs (one per proxy)
-plugins/        auto-loaded plugins (cors, latency, bucket, mock, recorder, tap, ws-tap, your own)
+plugins/        auto-loaded plugins (cors, latency, bucket, mock, diff, recorder, tap, ws-tap, your own)
 recordings/     default storage dir (gitignored)
 src/
   index.js      entry — picks TUI or --headless
