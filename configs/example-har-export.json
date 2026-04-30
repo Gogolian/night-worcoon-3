@@ -1,0 +1,13 @@
+{
+  "name": "har-export-demo",
+  "port": 8082,
+  "target": "https://httpbin.org",
+  "changeOrigin": true,
+  "followRedirects": false,
+  "plugins": ["tap", "har-export"],
+  "harExport": {
+    "outputPath": "./recordings/har-export-demo-capture.har",
+    "captureAll": false,
+    "controlPath": "/_har"
+  }
+}
