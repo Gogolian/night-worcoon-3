@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "description": "Tracks which source files each HTML doc page covers, plus a SHA-256 fingerprint of each source at the time the docs were last refreshed. Run `node docs/check-docs.mjs` to detect drift, then `--update` to refresh hashes after editing the affected pages.",
+  "generatedAt": "2026-04-30T20:18:21.989Z",
+  "docs": {
+    "docs/index.html": "Overview, quick start, project layout.",
+    "docs/architecture.html": "Big picture, request lifecycle, ctx shape, module map.",
+    "docs/configs.html": "Profile JSON schema reference + cheat sheet for plugin sub-blocks.",
+    "docs/plugins.html": "Plugin pipeline + reference for every built-in plugin.",
+    "docs/storage.html": "fs / sqlite backends + recording shape + body encoding.",
+    "docs/tui.html": "TUI tabs, keybindings, layout, headless mode.",
+    "docs/extending.html": "How to write a custom plugin (skeleton, hooks, ctx, gotchas)."
+  },
+  "sources": {
+    "src/index.js": {
+      "sha256": "3c646a56ff8c09404eb11622defd875326aa3d89c5b20e5529d373a068cbceec",
+      "lines": 73,
+      "covers": [
+        "docs/architecture.html",
+        "docs/tui.html",
+        "docs/index.html"
+      ],
+      "summary": "Entry point. Parses argv (--headless, --config), wires logger to stdout in headless mode, otherwise creates the TUI."
+    },
+    "src/tui.js": {
+      "sha256": "23dc34dae11c484e686f7a9b1d393b68a800fd622788ad8db4ae6b662042af8c",
+      "lines": 1383,
+      "covers": [
+        "docs/tui.html"
+      ],
+      "summary": "Blessed-based UI. Tabs: Configs / Logs / Mocks / Plugins / Help. Global keys for tab nav, start/stop, quit, reload."
+    },
+    "src/proxy.js": {
+      "sha256": "6d87cc6f38dbf9c02a2de5bfeb24197c5addf13a97a408d152b1c04ce90b1249",
+      "lines": 201,
+      "covers": [
+        "docs/architecture.html",
+        "docs/extending.html"
+      ],
+      "summary": "startProxy(): builds storage, loads plugins, runs HTTP server with onRequest/onResponse pipeline, manual forwarder with redirect support, WS upgrade passthrough via http-proxy."
+    },
+    "src/plugins.js": {
+      "sha256": "2a32c7f18aa5c4ee9a837f436819c498bd3f8855dc535f4410c57116093e0a00",
+      "lines": 74,
+      "covers": [
+        "docs/plugins.html",
+        "docs/extending.html",
+        "docs/architecture.html"
+      ],
+      "summary": "loadPlugins() (auto-discovers plugins/*.js, instantiates from object or factory, sorts by config.plugins order, calls init); runOnRequest stops at first short-circuit; runOnResponse always runs all."
+    },
+    "src/storage.js": {
+      "sha256": "da934aa803fd1f0f5c2c672c36052f871b905980e98032a39a6f8d06b1d63ed6",
+      "lines": 184,
+      "covers": [
+        "docs/storage.html"
+      ],
+      "summary": "FsStorage (one JSON per recording, scans dir on findBest), SqliteStorage (single table, indexed lookup, optional better-sqlite3 dep), buildRecord helper, encodeBody/decodeBody (utf8 vs base64)."
+    },
+    "src/match.js": {
+      "sha256": "f47f9184d80af592eb59dad36164f9050707c767afcfd765baf4038b65b49cac",
+      "lines": 58,
+      "covers": [
+        "docs/configs.html",
+        "docs/plugins.html",
+        "docs/extending.html"
+      ],
+      "summary": "compileRule() picks substring/regex/exact/any kind. matchRule() applies it. splitPathQuery() splits at first '?'."
+    },
+    "src/logger.js": {
+      "sha256": "133f0032d356d811f6cf2d65dec41dbe01af0a5f4450e938a367c89690916a62",
+      "lines": 27,
+      "covers": [
+        "docs/architecture.html"
+      ],
+      "summary": "EventEmitter-based Logger. Methods: info/warn/error/debug emit 'log'; trace(kind,data) emits 'trace'."
+    },
+    "plugins/cors.js": {
+      "sha256": "21cbf5ccad46c73fd1b7d52dad19ef508b60799262fcd5958f88ea3bf94b0930",
+      "lines": 66,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html"
+      ],
+      "summary": "Adds CORS headers in onResponse, short-circuits OPTIONS preflight in onRequest with 204. Supports origin string/array/'*', credentials, exposeHeaders, maxAge."
+    },
+    "plugins/latency.js": {
+      "sha256": "e575cc64b3c7772b17e2c82b902b0b2240e8cb0cfbefdb39cb0699fabecb73a2",
+      "lines": 81,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html"
+      ],
+      "summary": "onRequest: sleeps delayMs+random*jitterMs, then with failRate probability sets a synthetic failStatus response. Per-rule overrides via compileRule/matchRule."
+    },
+    "plugins/bucket.js": {
+      "sha256": "9f2be2f9f1f7efae28a8467b12a092cbf31e77051e437c215ae658304c639220",
+      "lines": 272,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html"
+      ],
+      "summary": "In-memory CRUD store keyed by collection path. idPattern: uuid/numeric/alphanumeric/regex:<pat>. POST/GET/PATCH/PUT/DELETE on /coll[/:id]. Optional persistPath for JSON file persistence; numeric counter rebuilt from data on startup. Misses fall through."
+    },
+    "plugins/mock.js": {
+      "sha256": "f58f928f07ed5f39ee4aeea2aab90422da0e38652e1b6901f0c3abbd8f6c85d8",
+      "lines": 98,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html"
+      ],
+      "summary": "First matching rule decides. Actions: PASS (no-op), MOCK (inline response, JSON-encodes objects), RET_REC (storage.findBest; fallback PASS/empty200/500)."
+    },
+    "plugins/recorder.js": {
+      "sha256": "bcee2fa78c5856c163e36ca63a6ff935c9c455e84ed8e84e5470b82d360febc0",
+      "lines": 46,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html",
+        "docs/storage.html"
+      ],
+      "summary": "onResponse only. By default skips non-'proxy' sources; recordAll:true also captures mock/bucket/etc. Calls buildRecord then storage.save."
+    },
+    "configs/httpbin.json": {
+      "sha256": "8869041dfd870d0e2a74cfea5c4eb32eebbcf9ae2ab088a04b76c64fe24cc289",
+      "lines": 39,
+      "covers": [
+        "docs/configs.html"
+      ],
+      "summary": "Example: mock + recorder against httpbin.org with fs storage."
+    },
+    "configs/example-bucket.json": {
+      "sha256": "c99c3dcb6b0fd72b3497b9248b4f7ec0685d7383361f26d2a9eb86229fa4f738",
+      "lines": 44,
+      "covers": [
+        "docs/configs.html",
+        "docs/plugins.html"
+      ],
+      "summary": "Example: bucket with three collections (numeric, uuid+template, regex) + mock + recorder."
+    },
+    "configs/example-sqlite.json": {
+      "sha256": "9dde280c8f2829efd1f1804783d0fbebca76353449adf940bf04ee63f9808508",
+      "lines": 23,
+      "covers": [
+        "docs/configs.html",
+        "docs/storage.html"
+      ],
+      "summary": "Example: same as httpbin.json but with sqlite storage."
+    },
+    "package.json": {
+      "sha256": "1b525b17fb47782c458d03fa8b6cb858613fec2b0e19b10992b5358e8f41ae9c",
+      "lines": 25,
+      "covers": [
+        "docs/index.html"
+      ],
+      "summary": "Scripts (start, start:headless), deps (blessed, http-proxy), optional dep (better-sqlite3), Node >=18."
+    },
+    "README.md": {
+      "sha256": "647834a433184f8c82abde29141e781883189b1e55f83571628b8ae703e4e8af",
+      "lines": 220,
+      "covers": [
+        "docs/index.html"
+      ],
+      "summary": "Top-level README mirroring most of the docs at a higher level. If this changes, the Overview page may need a touch-up."
+    }
+  }
+}

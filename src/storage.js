@@ -64,6 +64,19 @@ class FsStorage {
     return `${rec.method}__${safePath}__${rec.id}.json`;
   }
 
+  _readAllRecords() {
+    const records = [];
+    for (const f of fs.readdirSync(this.dir)) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        records.push(JSON.parse(fs.readFileSync(path.join(this.dir, f), 'utf8')));
+      } catch {
+        // ignore unreadable / malformed recording files
+      }
+    }
+    return records;
+  }
+
   async save(rec) {
     const file = path.join(this.dir, this._safeName(rec));
     fs.writeFileSync(file, JSON.stringify(rec, null, 2));
@@ -71,23 +84,12 @@ class FsStorage {
   }
 
   async findBest({ method, path: urlPath, query }) {
-    const files = fs
-      .readdirSync(this.dir)
-      .filter((f) => f.endsWith('.json'));
-    const matches = [];
-    for (const f of files) {
-      try {
-        const rec = JSON.parse(fs.readFileSync(path.join(this.dir, f), 'utf8'));
-        if (rec.method !== method.toUpperCase()) continue;
-        if (rec.path !== urlPath) continue;
-        matches.push(rec);
-      } catch {}
-    }
+    const wantedMethod = method.toUpperCase();
+    const matches = this._readAllRecords()
+      .filter((r) => r.method === wantedMethod && r.path === urlPath);
     if (matches.length === 0) return null;
     if (query) {
-      const exact = matches.find((m) => m.query === query);
-      if (exact) return exact;
-      return null;
+      return matches.find((m) => m.query === query) || null;
     }
     matches.sort((a, b) => (a.ts < b.ts ? 1 : -1));
     return matches[0];
