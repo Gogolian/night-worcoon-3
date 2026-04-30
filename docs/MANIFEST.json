@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "description": "Tracks which source files each HTML doc page covers, plus a SHA-256 fingerprint of each source at the time the docs were last refreshed. Run `node docs/check-docs.mjs` to detect drift, then `--update` to refresh hashes after editing the affected pages.",
-  "generatedAt": "2026-04-30T21:36:22.338Z",
+  "generatedAt": "2026-04-30T21:38:17.359Z",
   "docs": {
     "docs/index.html": "Overview, quick start, project layout.",
     "docs/architecture.html": "Big picture, request lifecycle, ctx shape, module map.",
@@ -201,7 +201,7 @@
       "summary": "No-op runtime plugin named post; enabling it activates the companion POST TUI request-client tab."
     },
     "plugins/post.tui.js": {
-      "sha256": "152b5a3a22ee4eefb5f611cbf489932ef6cbd2319d5fc22e16631222d481a79d",
+      "sha256": "e0c29b394403d898e23878cfd98dc991728bfa52b92b29dd1f6ecf6597109239",
       "lines": 360,
       "covers": [
         "docs/tui.html",
