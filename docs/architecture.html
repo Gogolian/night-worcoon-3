@@ -149,6 +149,8 @@
     body,             // Buffer
   },
 
+  forwardUpstream,    // () =&gt; Promise&lt;{ status, headers, body }&gt; for shadow observers
+
   meta: {
     source: null | 'proxy' | 'mock' | 'ret_rec'
           | 'ret_rec_fallback' | 'bucket' | 'cors'

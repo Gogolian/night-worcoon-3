@@ -31,8 +31,8 @@
       "summary": "Blessed-based UI. Tabs: Configs / Logs / Mocks / Plugins / Help. Global keys for tab nav, start/stop, quit, reload."
     },
     "src/proxy.js": {
-      "sha256": "779c04ac5d6ae27c8b834e077d86d3e887c4bd1086c0b621ef8a861a6cff2aa0",
-      "lines": 195,
+      "sha256": "a05d95899ef7b193870bbcdfb7a7609e1e2b9f395d5cdf38e7d17b32bc27b9f4",
+      "lines": 202,
       "covers": [
         "docs/architecture.html",
         "docs/extending.html"
@@ -156,8 +156,8 @@
       "summary": "Scripts (start, start:headless), deps (blessed), optional dep (better-sqlite3), Node >=18."
     },
     "README.md": {
-      "sha256": "e9fd8849555b88fa0f1db3c1fa768a0b76405d0d86cea5027a408c541b586450",
-      "lines": 373,
+      "sha256": "33c760955b1f8e1a1eef30f3191df5b4ff11852c0bd34b7a92986fd522cd2da2",
+      "lines": 390,
       "covers": [
         "docs/index.html"
       ],
@@ -200,6 +200,15 @@
         "docs/extending.html"
       ],
       "summary": "Built-in WebSocket tap plugin. Logs frames, records sessions to JSON, and supports PASS/DROP/MOCK/REPLAY rules."
+    },
+    "plugins/diff.js": {
+      "sha256": "f918cd15c83a015c39a28611db2b44c4750a69162a8706fd700e355ad6735899",
+      "lines": 220,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html"
+      ],
+      "summary": "onResponse observer for RET_REC shadow mode. Calls ctx.forwardUpstream(), compares replay vs upstream status, normalized headers, and JSON body, then logs/traces drift."
     },
     "plugins/metrics.js": {
       "sha256": "bad52a814412942aaa22f8eeeaf04b18d102daafa50b66fe34c9e1b83808d6f4",

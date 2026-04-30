@@ -87,6 +87,7 @@ for (const p of plugins) {
         <tr><td><a href="#latency"><code>latency</code></a></td><td>Inject delay + random failures.</td>          <td><code>latency_fail</code> (on inject)</td></tr>
         <tr><td><a href="#bucket"><code>bucket</code></a></td>  <td>In-memory CRUD store, optional persistence.</td><td><code>bucket</code></td></tr>
         <tr><td><a href="#mock"><code>mock</code></a></td>      <td>Rule-based mock / replay from recordings.</td> <td><code>mock</code> · <code>ret_rec</code> · <code>ret_rec_fallback</code></td></tr>
+        <tr><td><a href="#diff"><code>diff</code></a></td>      <td>Shadow replayed recordings and report upstream drift.</td><td>— (only observes)</td></tr>
         <tr><td><a href="#recorder"><code>recorder</code></a></td><td>Save real upstream responses.</td>          <td>— (only observes)</td></tr>
         <tr><td><a href="#metrics"><code>metrics</code></a></td><td>Per-route counters, latency histograms, error rates, bytes in/out. Prometheus endpoint + TUI tab.</td><td><code>metrics</code> (endpoint only)</td></tr>
         <tr><td><a href="#tap"><code>tap</code></a></td>        <td>Stream live transactions into the TUI.</td>  <td>— (only observes)</td></tr>
@@ -96,7 +97,7 @@ for (const p of plugins) {
     </table>
 
     <p>Recommended ordering when using all of them:
-    <code>["metrics", "cors", "latency", "bucket", "mock", "recorder", "tap", "ws-tap", "har-export"]</code>.</p>
+    <code>["metrics", "cors", "latency", "bucket", "mock", "diff", "recorder", "tap", "ws-tap", "har-export"]</code>.</p>
 
     <!-- ----- cors ----- -->
 
@@ -282,6 +283,34 @@ for (const p of plugins) {
         <tr><td><code>"500"</code> (default)</td><td>Return <code>500</code> with a "no recording" message.</td></tr>
     </tbody>
     </table>
+
+    <!-- ----- diff ----- -->
+
+    <h2 id="diff">diff</h2>
+    <p>Source: <code>plugins/diff.js</code></p>
+
+    <p>Pure observer for shadow mode. When a previous plugin returns a
+    recording with <code>ctx.meta.source === 'ret_rec'</code>, <code>diff</code>
+    forwards the same request to the upstream, keeps the recorded response for
+    the client, and reports drift between replay and upstream.</p>
+
+<pre><code>"plugins": ["mock", "diff", "recorder", "tap"],
+"diff": {
+  "ignoreHeaders": ["date", "x-request-id"],
+  "maxBodyDiffs": 20,
+  "logMatches": false
+}</code></pre>
+
+    <p>It compares status, headers, and JSON bodies. Header names are compared
+    case-insensitively; <code>date</code>, <code>connection</code>,
+    <code>keep-alive</code>, and <code>transfer-encoding</code> are ignored by
+    default. Extra <code>ignoreHeaders</code> entries are lower-cased and added to
+    that default set. <code>maxBodyDiffs</code> caps the number of JSON field
+    differences kept in the structured event.</p>
+
+    <p>On drift, the plugin logs a <code>[diff] drift ...</code> warning and emits
+    <code>logger.trace('diff', ...)</code> with status/header/JSON differences.
+    Set <code>logMatches: true</code> to also log matching shadow comparisons.</p>
 
     <!-- ----- recorder ----- -->
 

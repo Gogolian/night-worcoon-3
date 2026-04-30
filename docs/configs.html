@@ -103,6 +103,10 @@
           <td>Config for the <code>recorder</code> plugin.</td>
         </tr>
         <tr>
+          <td><code>diff</code></td><td>object</td><td>no</td>
+          <td>Config for the <code>diff</code> shadow comparison plugin.</td>
+        </tr>
+        <tr>
           <td><code>bucket</code></td><td>object</td><td>no</td>
           <td>Config for the <code>bucket</code> plugin.</td>
         </tr>
@@ -128,12 +132,13 @@
     <div class="callout warn">
       <span class="label">Plugin order matters</span>
       <code>plugins</code> is the pipeline order. The recommended ordering is
-      <code>["metrics", "cors", "latency", "bucket", "mock", "recorder", "tap"]</code> — that
+      <code>["metrics", "cors", "latency", "bucket", "mock", "diff", "recorder", "tap"]</code> — that
       way <code>metrics</code> observes every response first, <code>cors</code>
       handles preflights, <code>latency</code> delays/fails before any work is
       done, <code>bucket</code> handles CRUD, <code>mock</code> handles
-      canned/replayed responses, and <code>recorder</code> saves upstream
-      traffic before <code>tap</code> observes the final transaction stream.
+      canned/replayed responses, <code>diff</code> shadows replayed recordings,
+      and <code>recorder</code> saves upstream traffic before <code>tap</code>
+      observes the final transaction stream.
     </div>
 
     <h2>Storage shorthand</h2>
@@ -166,6 +171,16 @@
     <h3>recorder</h3>
 <pre><code>"recorder": { "recordAll": false }</code></pre>
     <p><code>recordAll: true</code> also captures mocked / replayed responses.</p>
+
+    <h3>diff</h3>
+<pre><code>"plugins": ["mock", "diff", "recorder", "tap"],
+"diff": {
+  "ignoreHeaders": ["date", "x-request-id"],
+  "maxBodyDiffs": 20,
+  "logMatches": false
+}</code></pre>
+    <p>When <code>RET_REC</code> hits, <code>diff</code> shadows the same request
+    to upstream and reports status, header, and JSON body drift.</p>
 
     <h3>tap</h3>
 <pre><code>"plugins": ["mock", "recorder", "tap"]</code></pre>
