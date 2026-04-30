@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Storage · night-worcoon-3</title>
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand">night-worcoon-3</div>
+    <div class="tagline">TUI middleware proxy · docs</div>
+    <nav>
+      <h4>Get started</h4>
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <h4>Reference</h4>
+      <a href="configs.html">Configs</a>
+      <a href="plugins.html">Plugins</a>
+      <a href="storage.html">Storage</a>
+      <a href="tui.html">TUI</a>
+      <h4>Guides</h4>
+      <a href="extending.html">Write a plugin</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+
+    <h1>Storage</h1>
+
+    <div class="callout tldr">
+      <span class="label">TL;DR</span>
+      Storage is the recording backend used by the <code>recorder</code> and
+      <code>mock</code> plugins. Two flavours: <code>fs</code> (one JSON file
+      per recording) or <code>sqlite</code> (single DB file). Both expose the
+      same two-method API: <code>save(rec)</code> and
+      <code>findBest({method, path, query})</code>.
+    </div>
+
+    <h2>Choosing a backend</h2>
+
+<pre><code>"storage": { "type": "fs",     "path": "./recordings/httpbin" }
+// or
+"storage": { "type": "sqlite", "path": "./recordings/httpbin.db" }</code></pre>
+
+    <p>If you omit <code>storage</code>, the proxy defaults to <code>fs</code>
+    at <code>./recordings/&lt;name&gt;</code>.</p>
+
+    <table>
+      <thead><tr><th></th><th>fs</th><th>sqlite</th></tr></thead>
+      <tbody>
+        <tr><td>Dependency</td><td>none</td><td><code>better-sqlite3</code> (optional dep — install if you use it)</td></tr>
+        <tr><td>Visibility</td><td>Each recording is a readable JSON file you can <code>cat</code>, edit, or delete by hand.</td><td>One opaque file; query with the <code>sqlite3</code> CLI.</td></tr>
+        <tr><td>Lookup speed</td><td>O(n) — every request scans all files for <code>RET_REC</code>.</td><td>Indexed on <code>(method, path, ts)</code>.</td></tr>
+        <tr><td>Best for</td><td>Small fixture sets you want to inspect or commit.</td><td>Large or long-running record sessions.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <span class="label">SQLite is optional</span>
+      <code>better-sqlite3</code> is listed under <code>optionalDependencies</code>,
+      so a fresh <code>npm install</code> may skip it. If a profile asks for
+      <code>type: "sqlite"</code> and the package isn't installed, startup
+      fails with: <em>"SQLite storage requested but better-sqlite3 is not
+      installed."</em>
+    </div>
+
+    <h2>Recording shape</h2>
+
+    <p>Every saved recording — whether on disk or in SQLite — looks like
+    this:</p>
+
+<pre><code>{
+  "id":      "1714492800123-ab12cd",
+  "ts":      "2024-04-30T12:00:00.123Z",
+  "method":  "GET",
+  "path":    "/users/42",
+  "query":   "lang=en",
+  "url":     "/users/42?lang=en",
+  "request": {
+    "headers":      { "...": "..." },
+    "body":         "...",            // utf-8 string OR base64
+    "bodyEncoding": "utf8" | "base64"
+  },
+  "response": {
+    "status":       200,
+    "headers":      { "...": "..." },
+    "body":         "...",
+    "bodyEncoding": "utf8" | "base64"
+  }
+}</code></pre>
+
+    <h3>Body encoding</h3>
+
+    <p>Bodies are stored as raw UTF-8 strings when they look "printable",
+    otherwise base64. The check is simple: a body is treated as text if it
+    contains no bytes in <code>0x00–0x08</code> or <code>0x0E–0x1F</code>.
+    See <code>encodeBody()</code> / <code>decodeBody()</code> in
+    <code>src/storage.js</code>.</p>
+
+    <h2>Filesystem backend</h2>
+
+    <p>Class: <code>FsStorage</code> in <code>src/storage.js</code>.</p>
+
+    <ul class="clean">
+      <li>Each recording becomes one file: <code>&lt;METHOD&gt;__&lt;path&gt;__&lt;id&gt;.json</code>, where the path is sanitized (non-alphanumeric → <code>_</code>).</li>
+      <li><code>save()</code> writes synchronously with <code>JSON.stringify(..., null, 2)</code>.</li>
+      <li><code>findBest()</code> reads every file in the dir, filters by method + path. With a query string, only an exact query match counts. Without one, the newest match by <code>ts</code> wins.</li>
+    </ul>
+
+    <h2>SQLite backend</h2>
+
+    <p>Class: <code>SqliteStorage</code> in <code>src/storage.js</code>.</p>
+
+    <p>Single table:</p>
+
+<pre><code>CREATE TABLE recordings (
+  id      TEXT PRIMARY KEY,
+  ts      TEXT NOT NULL,
+  method  TEXT NOT NULL,
+  path    TEXT NOT NULL,
+  query   TEXT NOT NULL,
+  url     TEXT NOT NULL,
+  payload TEXT NOT NULL          -- the full JSON record
+);
+CREATE INDEX idx_recordings_lookup ON recordings (method, path, ts);</code></pre>
+
+    <p><code>findBest()</code> issues one indexed lookup ordered by
+    <code>ts DESC</code>; the full record is decoded from the
+    <code>payload</code> column.</p>
+
+    <h2>Public API (for plugin authors)</h2>
+
+<pre><code>// every plugin gets this on ctx.storage
+storage.save(rec)                                 // returns id (sqlite) or path (fs)
+storage.findBest({ method, path, query })         // returns a record or null</code></pre>
+
+    <p>Helpers exported from <code>src/storage.js</code>:</p>
+
+<pre><code>buildRecord({ method, urlPath, query, req, res })   // constructs the shape above
+decodeBody(rec.response | rec.request)              // returns Buffer</code></pre>
+
+    <p>Used by the <code>recorder</code> plugin (to build records before
+    saving) and the <code>mock</code> plugin (to decode replayed bodies).</p>
+
+    <div class="footer">
+      Next: <a href="tui.html">TUI →</a>
+    </div>
+
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

@@ -4,6 +4,11 @@ TUI-driven middleware proxy (HTTP + WebSocket) with a pluggable pipeline,
 built-in **Mock** and **Recorder** plugins, and pick-at-runtime config
 profiles.
 
+> 📖 **Full HTML docs:** open [`docs/index.html`](docs/index.html) — overview,
+> architecture, every config field, every plugin, and a guide for writing
+> your own. See [`docs/README.md`](docs/README.md) for how the docs stay in
+> sync with the codebase (`node docs/check-docs.mjs`).
+
 ## Run
 
 ```bash

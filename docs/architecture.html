@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Architecture · night-worcoon-3</title>
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand">night-worcoon-3</div>
+    <div class="tagline">TUI middleware proxy · docs</div>
+    <nav>
+      <h4>Get started</h4>
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <h4>Reference</h4>
+      <a href="configs.html">Configs</a>
+      <a href="plugins.html">Plugins</a>
+      <a href="storage.html">Storage</a>
+      <a href="tui.html">TUI</a>
+      <h4>Guides</h4>
+      <a href="extending.html">Write a plugin</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+
+    <h1>Architecture</h1>
+
+    <div class="callout tldr">
+      <span class="label">TL;DR</span>
+      A request comes in → plugins run top-to-bottom (<code>onRequest</code>) →
+      first plugin to set <code>ctx.response</code> wins → otherwise we forward
+      to the upstream → all plugins run <code>onResponse</code> → we write the
+      response back to the client.
+    </div>
+
+    <h2>The big picture</h2>
+
+    <div class="diagram">
+<pre>
+                ┌──────────────────────────────────────────────┐
+                │                src/index.js                  │
+                │   parses argv, picks TUI or --headless mode  │
+                └──────────────┬──────────────┬────────────────┘
+                               │              │
+                       (TUI)   ▼              ▼  (headless)
+                ┌──────────────────┐  ┌────────────────────┐
+                │   src/tui.js     │  │    just runs       │
+                │ blessed-based UI │  │    startProxy()    │
+                │ picks a config   │  │    on a config     │
+                └─────────┬────────┘  └─────────┬──────────┘
+                          │                     │
+                          └──────────┬──────────┘
+                                     ▼
+                       ┌─────────────────────────────┐
+                       │      src/proxy.js           │
+                       │      startProxy(config)     │
+                       │  ─────────────────────────  │
+                       │  1. createStorage()         │  ← src/storage.js
+                       │  2. loadPlugins()           │  ← src/plugins.js
+                       │  3. http.createServer(...)  │
+                       │  4. server.on('upgrade')    │  ← WS passthrough
+                       └─────────────────────────────┘
+</pre>
+    </div>
+
+    <h2>Request lifecycle</h2>
+
+    <p>This is the path every HTTP request takes through
+    <code>src/proxy.js</code>:</p>
+
+    <div class="diagram">
+<pre>
+   client                         proxy                      upstream
+     │                              │                            │
+     │ ─── HTTP request ──────────▶ │                            │
+     │                              │                            │
+     │                  ┌───────────┴──────────────┐             │
+     │                  │ 1. readBody(req)         │             │
+     │                  │ 2. build ctx object      │             │
+     │                  │    {req, response:null}  │             │
+     │                  └───────────┬──────────────┘             │
+     │                              │                            │
+     │                  ┌───────────┴──────────────┐             │
+     │                  │ runOnRequest(plugins)    │             │
+     │                  │ ────────────────────────  │             │
+     │                  │  cors → latency → bucket  │             │
+     │                  │   → mock → recorder       │             │
+     │                  │                          │             │
+     │                  │ stops at first plugin    │             │
+     │                  │ that sets ctx.response   │             │
+     │                  └───────────┬──────────────┘             │
+     │                              │                            │
+     │                  ┌───────────┴──────────────┐             │
+     │                  │ ctx.response still null? │ ── yes ──▶  │
+     │                  │ → forwardManual(req)     │             │
+     │                  │   set ctx.meta.source    │ ◀── 200 ─── │
+     │                  │   = 'proxy'              │             │
+     │                  └───────────┬──────────────┘             │
+     │                              │                            │
+     │                  ┌───────────┴──────────────┐             │
+     │                  │ runOnResponse(plugins)   │             │
+     │                  │ (every plugin runs;      │             │
+     │                  │  e.g. recorder saves,    │             │
+     │                  │  cors adds headers)      │             │
+     │                  └───────────┬──────────────┘             │
+     │                              │                            │
+     │ ◀──── HTTP response ─────────│                            │
+     │                              │                            │
+     │                              │ logger.trace('request')    │
+</pre>
+    </div>
+
+    <div class="callout tip">
+      <span class="label">Why two phases?</span>
+      <code>onRequest</code> is for <em>short-circuiting</em> (mock, bucket
+      hit, CORS preflight, injected failure). <code>onResponse</code> is for
+      <em>observing or decorating</em> the final response (recorder saves it,
+      cors stamps headers on it).
+    </div>
+
+    <h2>The <code>ctx</code> object</h2>
+
+    <p>Every plugin gets the same <code>ctx</code> object. Mutate it freely;
+    plugins later in the chain see your changes.</p>
+
+<pre><code>ctx = {
+  config,    // the parsed profile JSON (read-only by convention)
+  storage,   // FsStorage | SqliteStorage instance
+  logger,    // shared EventEmitter logger
+
+  req: {
+    method,           // 'GET', 'POST', ...
+    url,              // raw, includes query string
+    path,             // url with query stripped
+    query,            // string after '?', '' if none
+    headers,          // node http headers object
+    body,             // Buffer (already fully read)
+  },
+
+  response: null | {  // set by a plugin to short-circuit
+    status,           // number
+    headers,          // plain object
+    body,             // Buffer
+  },
+
+  meta: {
+    source: null | 'proxy' | 'mock' | 'ret_rec'
+          | 'ret_rec_fallback' | 'bucket' | 'cors'
+          | 'latency_fail',
+  },
+}</code></pre>
+
+    <h2>WebSockets</h2>
+
+    <p>The HTTP server listens for <code>upgrade</code> events and hands them
+    to a separate <code>http-proxy</code> instance configured for
+    <code>ws: true</code>. <strong>Plugin hooks do not see WS traffic yet</strong>
+    — it's a straight passthrough to <code>config.target</code>.</p>
+
+    <h2>Files at a glance</h2>
+
+    <table>
+      <thead><tr><th>File</th><th>Responsibility</th><th>LOC</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/index.js</code></td><td>argv parsing, TUI vs headless dispatch</td><td>~70</td></tr>
+        <tr><td><code>src/tui.js</code></td><td>blessed UI (5 tabs, live logs, mock browser)</td><td>~1380</td></tr>
+        <tr><td><code>src/proxy.js</code></td><td>HTTP server, manual forwarder, WS upgrade, pipeline runner</td><td>~200</td></tr>
+        <tr><td><code>src/plugins.js</code></td><td>plugin loader + <code>runOnRequest</code> / <code>runOnResponse</code></td><td>~75</td></tr>
+        <tr><td><code>src/storage.js</code></td><td>fs + sqlite backends, recording shape, body encoding</td><td>~185</td></tr>
+        <tr><td><code>src/match.js</code></td><td><code>compileRule</code> / <code>matchRule</code> / <code>splitPathQuery</code></td><td>~60</td></tr>
+        <tr><td><code>src/logger.js</code></td><td>EventEmitter logger (info/warn/error/debug + trace)</td><td>~25</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Module map</h2>
+
+    <div class="diagram">
+<pre>
+   index.js ─┬─▶ tui.js
+             └─▶ proxy.js ─┬─▶ plugins.js ─▶ plugins/*.js
+                           ├─▶ storage.js     │
+                           └─▶ match.js  ◀────┤
+                                              │ (mock, latency import match)
+                                              │ (mock, recorder import storage)
+   logger.js  ◀── everywhere
+</pre>
+    </div>
+
+    <div class="footer">
+      Next: <a href="configs.html">Configs reference →</a>
+    </div>
+
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>
