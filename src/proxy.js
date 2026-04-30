@@ -109,6 +109,13 @@ function buildRequestContext({ req, reqBody, urlPath, query, method, config, sto
     },
     response: null, // set by a plugin to short-circuit
     meta: { source: null, startedAt }, // e.g. source: 'mock' | 'ret_rec' | 'proxy'
+    forwardUpstream: () => forwardManual({
+      config,
+      reqMethod: method,
+      reqPath: req.url,
+      reqHeaders: req.headers,
+      reqBody,
+    }),
   };
 }
 
