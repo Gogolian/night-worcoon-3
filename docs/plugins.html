@@ -88,12 +88,13 @@ for (const p of plugins) {
         <tr><td><a href="#bucket"><code>bucket</code></a></td>  <td>In-memory CRUD store, optional persistence.</td><td><code>bucket</code></td></tr>
         <tr><td><a href="#mock"><code>mock</code></a></td>      <td>Rule-based mock / replay from recordings.</td> <td><code>mock</code> · <code>ret_rec</code> · <code>ret_rec_fallback</code></td></tr>
         <tr><td><a href="#recorder"><code>recorder</code></a></td><td>Save real upstream responses.</td>          <td>— (only observes)</td></tr>
+        <tr><td><a href="#tap"><code>tap</code></a></td>        <td>Stream live transactions into the TUI.</td>  <td>— (only observes)</td></tr>
         <tr><td><a href="#ws-tap"><code>ws-tap</code></a></td><td>Log, mock, record, and replay WS frames.</td><td><code>ws_tap_mock</code> · <code>ws_tap_replay</code> · <code>ws_tap_drop</code></td></tr>
       </tbody>
     </table>
 
     <p>Recommended ordering when using all of them:
-    <code>["cors", "latency", "bucket", "mock", "recorder"]</code>.</p>
+    <code>["cors", "latency", "bucket", "mock", "recorder", "tap", "ws-tap"]</code>.</p>
 
     <!-- ----- cors ----- -->
 
@@ -295,6 +296,23 @@ for (const p of plugins) {
 
     <p>Each saved entry has the shape documented in
     <a href="storage.html">Storage → Recording shape</a>.</p>
+
+    <!-- ----- tap ----- -->
+
+    <h2 id="tap">tap</h2>
+    <p>Source: <code>plugins/tap.js</code> · TUI: <code>plugins/tap.tui.js</code></p>
+
+    <p>Pure observer. Runs in <code>onResponse</code> and emits a transaction
+    event for every completed HTTP request. The Tap TUI tab keeps an in-memory
+    live stream showing method, status, latency, response size, source, and
+    URL. It can filter by URL substring or status, pause/resume rendering,
+    clear the buffer, and copy the selected request as a cURL command.</p>
+
+<pre><code>"plugins": ["mock", "recorder", "tap"]</code></pre>
+
+    <p>Status filters accept exact codes (<code>200</code>), classes
+    (<code>2xx</code>), ranges (<code>400-499</code>), and comparisons
+    (<code>&gt;=500</code>).</p>
 
     <!-- ----- ws-tap ----- -->
 

@@ -7,7 +7,7 @@
   },
   "changeOrigin": true,
   "followRedirects": false,
-  "plugins": ["mock", "recorder"],
+  "plugins": ["mock", "recorder", "tap"],
   "storage": {
     "type": "fs",
     "path": "./recordings/httpbin"

@@ -94,7 +94,7 @@ async function forwardManual({ config, reqMethod, reqPath, reqHeaders, reqBody }
   };
 }
 
-function buildRequestContext({ req, reqBody, urlPath, query, method, config, storage, logger }) {
+function buildRequestContext({ req, reqBody, urlPath, query, method, config, storage, logger, startedAt }) {
   return {
     config,
     storage,
@@ -108,7 +108,7 @@ function buildRequestContext({ req, reqBody, urlPath, query, method, config, sto
       body: reqBody,
     },
     response: null, // set by a plugin to short-circuit
-    meta: { source: null }, // e.g. 'mock' | 'ret_rec' | 'proxy'
+    meta: { source: null, startedAt }, // e.g. source: 'mock' | 'ret_rec' | 'proxy'
   };
 }
 
@@ -134,7 +134,7 @@ export async function startProxy({ config, configDir, logger, pluginsDir }) {
     try {
       const reqBody = await streamToBuffer(req);
       const ctx = buildRequestContext({
-        req, reqBody, urlPath, query, method, config, storage, logger,
+        req, reqBody, urlPath, query, method, config, storage, logger, startedAt,
       });
 
       await runOnRequest(plugins, ctx);
