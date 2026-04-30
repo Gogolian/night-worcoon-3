@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TUI · night-worcoon-3</title>
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand">night-worcoon-3</div>
+    <div class="tagline">TUI middleware proxy · docs</div>
+    <nav>
+      <h4>Get started</h4>
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <h4>Reference</h4>
+      <a href="configs.html">Configs</a>
+      <a href="plugins.html">Plugins</a>
+      <a href="storage.html">Storage</a>
+      <a href="tui.html">TUI</a>
+      <h4>Guides</h4>
+      <a href="extending.html">Write a plugin</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+
+    <h1>The TUI</h1>
+
+    <div class="callout tldr">
+      <span class="label">TL;DR</span>
+      Run <code>npm start</code> and you get a terminal UI built on
+      <a href="https://github.com/chjj/blessed">blessed</a> with five tabs:
+      Configs, Logs, Mocks, Plugins, Help. The proxy itself runs in the same
+      Node process; the TUI just controls it.
+    </div>
+
+    <h2>Launching</h2>
+
+<pre><code>npm start                                       # TUI (this page)
+npm run start:headless -- --config httpbin.json # no TUI, just the proxy</code></pre>
+
+    <h2>Tabs</h2>
+
+    <div class="cards">
+      <div class="card">
+        <h3>Configs</h3>
+        <p>Browse every <code>.json</code> in <code>configs/</code>, see its
+        details, and start / stop a proxy from the chosen profile.</p>
+      </div>
+      <div class="card">
+        <h3>Logs</h3>
+        <p>Live tail of the shared logger
+        (<code>info</code> / <code>warn</code> / <code>error</code> /
+        <code>debug</code>) plus per-request <code>trace</code> events.</p>
+      </div>
+      <div class="card">
+        <h3>Mocks</h3>
+        <p>Browse stored recordings from the active profile's storage,
+        inspect headers/bodies, edit rules.</p>
+      </div>
+      <div class="card">
+        <h3>Plugins</h3>
+        <p>Toggle plugins on/off for the active profile and reorder them.</p>
+      </div>
+      <div class="card">
+        <h3>Help</h3>
+        <p>Quick keybinding cheat-sheet, in-app.</p>
+      </div>
+    </div>
+
+    <h2>Global keybindings</h2>
+
+    <table>
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>Switch tabs (when focus is on the tab bar)</td></tr>
+        <tr><td><kbd>↓</kbd></td>                <td>Drop focus into the active tab's content</td></tr>
+        <tr><td><kbd>↑</kbd></td>                <td>From the top of a tab, move focus back to the tab bar</td></tr>
+        <tr><td><kbd>Enter</kbd></td>            <td>Activate the focused thing (start a proxy, edit a field, …)</td></tr>
+        <tr><td><kbd>s</kbd></td>                <td>Stop the active proxy</td></tr>
+        <tr><td><kbd>Ctrl-R</kbd></td>           <td>Reload the configs list from disk</td></tr>
+        <tr><td><kbd>c</kbd></td>                <td>(Logs tab) Clear the log buffer</td></tr>
+        <tr><td><kbd>q</kbd> / <kbd>Ctrl-C</kbd></td><td>Quit (stops the active proxy first)</td></tr>
+      </tbody>
+    </table>
+
+    <p>The bottom status bar always shows the keys that apply to the
+    currently focused panel. Watch it — that's the source of truth.</p>
+
+    <h2>Layout</h2>
+
+    <div class="diagram">
+<pre>
+  ┌──────────────────────────────────────────────────────────────┐
+  │  night-worcoon-3 · middleware proxy                          │  ← title bar
+  ├──────────────────────────────────────────────────────────────┤
+  │  Configs   Logs   Mocks   Plugins   Help                     │  ← tab bar
+  ├──────────────────────────────────────────────────────────────┤
+  │                                                              │
+  │             active tab content (one box per tab)             │
+  │                                                              │
+  │                                                              │
+  ├──────────────────────────────────────────────────────────────┤
+  │  proxy "httpbin" listening on :8080 → https://httpbin.org    │  ← status
+  ├──────────────────────────────────────────────────────────────┤
+  │  [↑/↓] pick config  [enter] start  [s] stop  [q] quit        │  ← help bar
+  └──────────────────────────────────────────────────────────────┘
+</pre>
+    </div>
+
+    <h2>How the TUI talks to the proxy</h2>
+
+    <p><code>src/index.js</code> creates the TUI and passes in two callbacks:</p>
+
+<pre><code>createTui({
+  configsDir, pluginsDir, logger,
+  onStart: async (config) =&gt; startProxy({ config, ... }),  // returns handle
+  onStop:  async (handle) =&gt; handle.stop(),
+});</code></pre>
+
+    <p>That's it. The TUI never talks to HTTP directly — it only spins up /
+    tears down a <code>startProxy()</code> handle and listens to the same
+    <code>logger</code> for live updates.</p>
+
+    <div class="callout tip">
+      <span class="label">Want to run without a terminal?</span>
+      Use <code>npm run start:headless -- --config &lt;file.json&gt;</code>.
+      Logs go to stdout, traces (one line per request) to stdout,
+      <code>SIGINT</code> / <code>SIGTERM</code> shut down cleanly.
+    </div>
+
+    <div class="footer">
+      Next: <a href="extending.html">Write your own plugin →</a>
+    </div>
+
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

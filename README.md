@@ -4,6 +4,11 @@
 
 **A TUI-driven middleware proxy for HTTP & WebSocket — mock, record, replay, and chaos-test any API from your terminal.**
 
+> 📖 **Full HTML docs:** open [`docs/index.html`](docs/index.html) — overview,
+> architecture, every config field, every plugin, and a guide for writing
+> your own. See [`docs/README.md`](docs/README.md) for how the docs stay in
+> sync with the codebase (`node docs/check-docs.mjs`).
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-brightgreen.svg)](https://nodejs.org)
 [![Made with JavaScript](https://img.shields.io/badge/made%20with-JavaScript-f7df1e.svg)](https://nodejs.org)

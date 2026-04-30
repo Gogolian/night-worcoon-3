@@ -7,93 +7,119 @@ import { loadPlugins, runOnRequest, runOnResponse } from './plugins.js';
 import { createStorage } from './storage.js';
 import { splitPathQuery } from './match.js';
 
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
-  });
-}
-
-function bufferProxyRes(proxyRes) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    proxyRes.on('data', (c) => chunks.push(c));
-    proxyRes.on('end', () => resolve(Buffer.concat(chunks)));
-    proxyRes.on('error', reject);
-  });
-}
+const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
 
 /**
- * Manual forward (used when we need the full response body for plugins like Recorder).
+ * Drain a readable stream into a single Buffer.
+ * Used for both inbound client requests and outbound upstream responses.
  */
-function forwardManual({ config, reqMethod, reqPath, reqHeaders, reqBody }) {
+function streamToBuffer(stream) {
   return new Promise((resolve, reject) => {
-    const target = new URL(config.target);
-    const isHttps = target.protocol === 'https:';
-    const outHeaders = { ...reqHeaders };
+    const chunks = [];
+    stream.on('data', (chunk) => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
+}
 
-    // Headers tweaks
-    if (config.changeOrigin) {
-      outHeaders.host = target.host;
-    }
-    delete outHeaders['content-length']; // we set it below
-    if (config.requestHeaders) {
-      for (const [k, v] of Object.entries(config.requestHeaders)) {
-        outHeaders[k] = v;
-      }
-    }
-    if (reqBody && reqBody.length) {
-      outHeaders['content-length'] = String(reqBody.length);
-    }
+function buildForwardOptions({ config, reqMethod, reqPath, reqHeaders, reqBody }) {
+  const target = new URL(config.target);
+  const isHttps = target.protocol === 'https:';
 
-    const targetPath = `${target.pathname.replace(/\/$/, '')}${reqPath}`;
+  const outHeaders = { ...reqHeaders };
+  if (config.changeOrigin) outHeaders.host = target.host;
+  delete outHeaders['content-length']; // recomputed below if we have a body
+  if (config.requestHeaders) Object.assign(outHeaders, config.requestHeaders);
+  if (reqBody && reqBody.length) {
+    outHeaders['content-length'] = String(reqBody.length);
+  }
 
-    const opts = {
+  const targetPath = `${target.pathname.replace(/\/$/, '')}${reqPath}` || '/';
+
+  return {
+    target,
+    isHttps,
+    requestOptions: {
       protocol: target.protocol,
       hostname: target.hostname,
       port: target.port || (isHttps ? 443 : 80),
       method: reqMethod,
-      path: targetPath || '/',
+      path: targetPath,
       headers: outHeaders,
-      rejectUnauthorized: config.secure !== false ? true : false,
-    };
+      rejectUnauthorized: config.secure !== false,
+    },
+  };
+}
 
-    const lib = isHttps ? https : http;
-    const pReq = lib.request(opts, async (pRes) => {
-      try {
-        // Handle redirects if requested.
-        if (
-          config.followRedirects &&
-          [301, 302, 303, 307, 308].includes(pRes.statusCode) &&
-          pRes.headers.location
-        ) {
-          const next = new URL(pRes.headers.location, target);
-          const result = await forwardManual({
-            config: { ...config, target: `${next.protocol}//${next.host}` },
-            reqMethod,
-            reqPath: next.pathname + next.search,
-            reqHeaders,
-            reqBody,
-          });
-          return resolve(result);
-        }
-        const body = await bufferProxyRes(pRes);
-        resolve({
-          status: pRes.statusCode,
-          headers: pRes.headers,
-          body,
-        });
-      } catch (e) {
-        reject(e);
-      }
-    });
+function isFollowableRedirect(config, res) {
+  return (
+    config.followRedirects
+    && REDIRECT_STATUS_CODES.has(res.statusCode)
+    && !!res.headers.location
+  );
+}
 
-    pReq.on('error', reject);
-    if (reqBody && reqBody.length) pReq.write(reqBody);
-    pReq.end();
+/**
+ * Manual forward (used when we need the full response body for plugins like Recorder).
+ * Handles optional redirect following.
+ */
+async function forwardManual({ config, reqMethod, reqPath, reqHeaders, reqBody }) {
+  const { target, isHttps, requestOptions } = buildForwardOptions({
+    config, reqMethod, reqPath, reqHeaders, reqBody,
   });
+  const lib = isHttps ? https : http;
+
+  const upstreamRes = await new Promise((resolve, reject) => {
+    const req = lib.request(requestOptions, resolve);
+    req.on('error', reject);
+    if (reqBody && reqBody.length) req.write(reqBody);
+    req.end();
+  });
+
+  if (isFollowableRedirect(config, upstreamRes)) {
+    const next = new URL(upstreamRes.headers.location, target);
+    return forwardManual({
+      config: { ...config, target: `${next.protocol}//${next.host}` },
+      reqMethod,
+      reqPath: next.pathname + next.search,
+      reqHeaders,
+      reqBody,
+    });
+  }
+
+  return {
+    status: upstreamRes.statusCode,
+    headers: upstreamRes.headers,
+    body: await streamToBuffer(upstreamRes),
+  };
+}
+
+function buildRequestContext({ req, reqBody, urlPath, query, method, config, storage, logger }) {
+  return {
+    config,
+    storage,
+    logger,
+    req: {
+      method,
+      url: req.url,
+      path: urlPath,
+      query,
+      headers: req.headers,
+      body: reqBody,
+    },
+    response: null, // set by a plugin to short-circuit
+    meta: { source: null }, // e.g. 'mock' | 'ret_rec' | 'proxy'
+  };
+}
+
+function writeClientResponse(res, response) {
+  const { status, headers, body } = response;
+  // Node sets content-length itself; chunked transfer-encoding from upstream
+  // would conflict with that, so drop it.
+  const safeHeaders = { ...headers };
+  delete safeHeaders['transfer-encoding'];
+  res.writeHead(status || 200, safeHeaders);
+  res.end(body && body.length ? body : undefined);
 }
 
 export async function startProxy({ config, configDir, logger, pluginsDir }) {
@@ -115,57 +141,33 @@ export async function startProxy({ config, configDir, logger, pluginsDir }) {
     const method = req.method || 'GET';
 
     try {
-      const reqBody = await readBody(req);
-
-      const ctx = {
-        config,
-        storage,
-        logger,
-        req: {
-          method,
-          url: req.url,
-          path: urlPath,
-          query,
-          headers: req.headers,
-          body: reqBody,
-        },
-        response: null, // set by a plugin to short-circuit
-        meta: { source: null }, // e.g. 'mock' | 'ret_rec' | 'proxy'
-      };
+      const reqBody = await streamToBuffer(req);
+      const ctx = buildRequestContext({
+        req, reqBody, urlPath, query, method, config, storage, logger,
+      });
 
       await runOnRequest(plugins, ctx);
 
       if (!ctx.response) {
-        // Forward to target.
-        const upstream = await forwardManual({
+        ctx.response = await forwardManual({
           config,
           reqMethod: method,
           reqPath: req.url,
           reqHeaders: req.headers,
           reqBody,
         });
-        ctx.response = upstream;
         ctx.meta.source = ctx.meta.source || 'proxy';
       }
 
       await runOnResponse(plugins, ctx);
+      writeClientResponse(res, ctx.response);
 
-      // Write response to client.
-      const { status, headers, body } = ctx.response;
-      const safeHeaders = { ...headers };
-      // http-proxy style: node will set content-length; drop transfer-encoding
-      delete safeHeaders['transfer-encoding'];
-      res.writeHead(status || 200, safeHeaders);
-      if (body && body.length) res.end(body);
-      else res.end();
-
-      const took = Date.now() - startedAt;
       logger.trace('request', {
         method,
         url: req.url,
-        status: status || 200,
+        status: ctx.response.status || 200,
         source: ctx.meta.source || 'proxy',
-        ms: took,
+        ms: Date.now() - startedAt,
       });
     } catch (err) {
       logger.error(`handler error: ${err.stack || err.message}`);

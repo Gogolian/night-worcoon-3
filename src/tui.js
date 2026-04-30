@@ -1,6 +1,7 @@
 import blessed from 'blessed';
 import fs from 'node:fs';
 import path from 'node:path';
+import url from 'node:url';
 
 // ---------- small helpers ----------
 function fmtTs(d) {
@@ -26,7 +27,7 @@ function prettyValue(v) {
 }
 
 // ---------- main ----------
-export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
+export async function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   const screen = blessed.screen({
     smartCSR: true,
     title: 'night-worcoon-3',
@@ -42,7 +43,15 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   });
 
   // ---------- tab bar ----------
-  const TABS = ['Configs', 'Logs', 'Mocks', 'Plugins', 'Help'];
+  // Static tabs are always present. Plugin-contributed tabs are inserted
+  // between "Plugins" and "Help" and become visible only while the plugin
+  // they belong to is enabled in the currently-selected config.
+  const STATIC_LEFT_TABS = ['Configs', 'Logs', 'Mocks', 'Plugins'];
+  const STATIC_RIGHT_TABS = ['Help'];
+  // Filled in after plugin TUI extensions are loaded below.
+  /** @type {Array<{tabName:string, instance:any, page:any}>} */
+  const pluginTabs = [];
+  let TABS = [...STATIC_LEFT_TABS, ...STATIC_RIGHT_TABS];
   let tabIdx = 0;
   let focusZone = 'tabs'; // 'tabs' | 'content'
 
@@ -76,6 +85,16 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   const pages = {};
   for (const name of TABS) {
     pages[name] = blessed.box({
+      parent: screen,
+      top: contentTop, left: 0, right: 0, bottom: contentBottom,
+      hidden: true,
+    });
+  }
+
+  // Helper to build a page for plugin tabs (called later, after pluginTabs
+  // are discovered). Plugin pages sit in the same content rectangle.
+  function createPluginPage() {
+    return blessed.box({
       parent: screen,
       top: contentTop, left: 0, right: 0, bottom: contentBottom,
       hidden: true,
@@ -280,6 +299,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     });
     optionsList.setItems(items);
     if ((optionsList.selected || 0) >= items.length) optionsList.select(Math.max(0, items.length - 1));
+    recomputeTabs();
     screen.render();
   }
 
@@ -301,10 +321,10 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   // =====================================================
   //                      MOCKS TAB
   // =====================================================
-  const mocksBox = blessed.list({
+  const mocksList = blessed.list({
     parent: pages['Mocks'],
-    label: ' mock rules (selected config) ',
-    top: 0, left: 0, right: 0, bottom: 0,
+    label: ' mock rules ',
+    top: 0, left: 0, bottom: 0, width: '45%',
     border: 'line',
     keys: false, mouse: true,
     tags: true,
@@ -315,23 +335,118 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     },
   });
 
+  const mocksDetail = blessed.box({
+    parent: pages['Mocks'],
+    label: ' rule details ',
+    top: 0, left: '45%', right: 0, bottom: 0,
+    border: 'line',
+    tags: true,
+    scrollable: true,
+    alwaysScroll: true,
+    scrollbar: { ch: ' ', style: { bg: 'cyan' } },
+    mouse: true, keys: false,
+    style: { border: { fg: 'cyan' } },
+  });
+
+  function ruleMatchKind(r) {
+    if (r.urlContains != null) return 'contains';
+    if (typeof r.url === 'string' && r.url.includes(':')) return 'pattern';
+    return 'exact';
+  }
+
+  function ruleTargetText(r) {
+    if (r.urlContains != null) return r.urlContains;
+    if (r.url != null) return r.url;
+    return '';
+  }
+
+  function formatRuleRow(r, i) {
+    const method = (r.method || '*').toUpperCase();
+    const target = ruleTargetText(r) || '?';
+    const kind = ruleMatchKind(r);
+    const sigil = kind === 'contains' ? '~' : kind === 'pattern' ? ':' : '=';
+    const action = (r.action || 'PASS').toUpperCase();
+    const color =
+      action === 'MOCK' ? 'green' :
+      action === 'PASS' ? 'cyan' :
+      action.startsWith('RET') || action.startsWith('REC') ? 'yellow' : 'white';
+    return ` ${String(i + 1).padStart(2)}  {magenta-fg}${method.padEnd(6)}{/} {gray-fg}${sigil}{/} ${String(target).padEnd(24).slice(0, 24)}  {${color}-fg}${action}{/}`;
+  }
+
+  function renderMocksDetail() {
+    const entry = currentConfig();
+    if (!entry?.config) {
+      mocksDetail.setContent('\n  (no valid config selected)\n');
+      return;
+    }
+    const rules = entry.config.mock?.rules || [];
+    if (!rules.length) {
+      mocksDetail.setContent(
+        '\n  {bold}No rules defined yet.{/bold}\n\n' +
+        '  Press {yellow-fg}{bold}a{/}{/} to add a new mock rule.\n\n' +
+        '  {gray-fg}Rules are evaluated top-to-bottom; first match wins.{/}\n',
+      );
+      return;
+    }
+    const idx = Math.min(Math.max(0, mocksList.selected || 0), rules.length - 1);
+    const r = rules[idx];
+    const lines = [];
+    lines.push('');
+    lines.push(`  {bold}Rule #${idx + 1}{/bold} of ${rules.length}`);
+    lines.push('');
+    lines.push(`  {white-fg}method      :{/} {magenta-fg}${(r.method || '*').toUpperCase()}{/}`);
+    const kind = ruleMatchKind(r);
+    const kindHint =
+      kind === 'contains' ? 'contains  {gray-fg}(substring of path){/}' :
+      kind === 'pattern' ? 'pattern   {gray-fg}(/foo/:id style){/}' :
+      'exact     {gray-fg}(full path equals){/}';
+    lines.push(`  {white-fg}match type  :{/} ${kindHint}`);
+    lines.push(`  {white-fg}url         :{/} {cyan-fg}${ruleTargetText(r) || '(none)'}{/}`);
+    const action = (r.action || 'PASS').toUpperCase();
+    const aColor = action === 'MOCK' ? 'green' : action === 'PASS' ? 'cyan' : 'yellow';
+    lines.push(`  {white-fg}action      :{/} {${aColor}-fg}{bold}${action}{/}`);
+    if (action === 'RET_REC') {
+      lines.push(`  {white-fg}fallback    :{/} ${r.fallback || '500'}   {gray-fg}(500 | empty200 | PASS){/}`);
+    } else if (action === 'MOCK') {
+      const resp = r.response || {};
+      lines.push('');
+      lines.push('  {bold}response{/bold}');
+      lines.push(`  {white-fg}  status    :{/} ${resp.status ?? 200}`);
+      const headers = resp.headers || {};
+      const hCount = Object.keys(headers).length;
+      lines.push(`  {white-fg}  headers   :{/} ${hCount} header(s)`);
+      for (const [k, v] of Object.entries(headers)) {
+        lines.push(`               {cyan-fg}${k}{/}: ${prettyValue(v).slice(0, 60)}`);
+      }
+      const body = resp.body;
+      const bodyStr = body == null ? ''
+        : typeof body === 'string' ? body
+        : (() => { try { return JSON.stringify(body, null, 2); } catch { return String(body); } })();
+      const bodyLines = bodyStr === '' ? ['(empty)'] : bodyStr.split('\n');
+      lines.push(`  {white-fg}  body      :{/}`);
+      for (const ln of bodyLines.slice(0, 24)) {
+        lines.push(`    {gray-fg}│{/} ${ln}`);
+      }
+      if (bodyLines.length > 24) lines.push(`    {gray-fg}│ … (${bodyLines.length - 24} more lines){/}`);
+    }
+    lines.push('');
+    lines.push('  {gray-fg}[enter/e] edit · [a] add · [d] delete · [J/K] reorder{/}');
+    mocksDetail.setContent(lines.join('\n'));
+  }
+
   function renderMocks() {
     const entry = currentConfig();
     const rules = entry?.config?.mock?.rules || [];
     if (!rules.length) {
-      mocksBox.setItems([' (no mock rules defined for this config)']);
-      return;
+      mocksList.setItems([' {gray-fg}(no rules — press [a] to add){/}']);
+    } else {
+      mocksList.setItems(rules.map((r, i) => formatRuleRow(r, i)));
+      const cur = mocksList.selected || 0;
+      if (cur >= rules.length) mocksList.select(Math.max(0, rules.length - 1));
+      else if (cur < 0) mocksList.select(0);
     }
-    mocksBox.setItems(rules.map((r, i) => {
-      const method = r.method || '*';
-      const target = r.url || r.urlContains || r.urlMatches || '?';
-      const action = r.action || '?';
-      const color =
-        action === 'MOCK' ? 'green' :
-        action === 'PASS' ? 'cyan' :
-        action.startsWith('REC') || action.startsWith('RET') ? 'yellow' : 'white';
-      return ` ${String(i + 1).padStart(2)}  {magenta-fg}${method.padEnd(6)}{/}  ${String(target).padEnd(30)}  {${color}-fg}${action}{/}`;
-    }));
+    renderMocksDetail();
+    screen.render();
   }
 
   // =====================================================
@@ -354,7 +469,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   function renderPlugins() {
     let files = [];
     try {
-      files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js'));
+      files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js') && !f.endsWith('.tui.js'));
     } catch {}
     const entry = currentConfig();
     const enabled = new Set(entry?.config?.plugins || []);
@@ -428,8 +543,11 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       '{bold}Quick map{/bold}',
       ' Configs  - choose a profile, edit settings, start or stop the proxy.',
       ' Logs     - live request, response, and proxy events.',
-      ' Mocks    - mock rules for the selected profile.',
+      ' Mocks    - mock rules for the selected profile (add / edit / reorder).',
       ' Plugins  - available plugins and which ones are enabled.',
+      ' <plugin> - some plugins (e.g. Bucket) install their own tab when',
+      '            enabled in the selected config — go there to inspect',
+      '            and edit the plugin\'s data and settings.',
       ' Help     - this reference page.',
       '',
       '{bold}Terminal color legend{/bold}',
@@ -455,29 +573,55 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     logBox.setLabel(activeContentTab === 'Logs' ? ' [ live log ] ' : ' live log ');
     logBox.style.border.fg = activeContentTab === 'Logs' ? 'white' : 'cyan';
 
-    mocksBox.setLabel(
+    mocksList.setLabel(
       activeContentTab === 'Mocks'
-        ? ' [ mock rules (selected config) ] '
-        : ' mock rules (selected config) ',
+        ? ' [ mock rules ] '
+        : ' mock rules ',
     );
-    mocksBox.style.border.fg = activeContentTab === 'Mocks' ? 'white' : 'cyan';
+    mocksList.style.border.fg = activeContentTab === 'Mocks' ? 'white' : 'cyan';
+    mocksDetail.setLabel(
+      activeContentTab === 'Mocks'
+        ? ' [ rule details ] '
+        : ' rule details ',
+    );
+    mocksDetail.style.border.fg = activeContentTab === 'Mocks' ? 'white' : 'cyan';
 
     pluginsBox.setLabel(activeContentTab === 'Plugins' ? ' [ plugins ] ' : ' plugins ');
     pluginsBox.style.border.fg = activeContentTab === 'Plugins' ? 'white' : 'cyan';
 
     helpBox.setLabel(activeContentTab === 'Help' ? ' [ help ] ' : ' help ');
     helpBox.style.border.fg = activeContentTab === 'Help' ? 'white' : 'cyan';
+
+    // Let plugin tabs refresh their own border highlighting.
+    for (const t of pluginTabs) {
+      try { t.instance.renderFrames?.(activeContentTab === t.tabName); } catch {}
+    }
   }
 
   // =====================================================
   //                   TAB SWITCHING
   // =====================================================
+  let lastShownTab = null;
+
   function showTab(idx) {
     tabIdx = ((idx % TABS.length) + TABS.length) % TABS.length;
-    for (const name of TABS) pages[name].hide();
-    pages[TABS[tabIdx]].show();
-    if (TABS[tabIdx] === 'Mocks') renderMocks();
-    if (TABS[tabIdx] === 'Plugins') renderPlugins();
+    const name = TABS[tabIdx];
+
+    // Notify plugin tabs leaving / entering.
+    if (lastShownTab && lastShownTab !== name) {
+      const prev = pluginTabs.find((t) => t.tabName === lastShownTab);
+      if (prev) { try { prev.instance.onHide?.(); } catch {} }
+    }
+
+    for (const tn of TABS) pages[tn]?.hide();
+    pages[name].show();
+    if (name === 'Mocks') renderMocks();
+    if (name === 'Plugins') renderPlugins();
+
+    const cur = pluginTabs.find((t) => t.tabName === name);
+    if (cur) { try { cur.instance.onShow?.(currentConfig()); } catch (e) { logger.warn(`[plugin tab ${name}] onShow failed: ${e.message}`); } }
+
+    lastShownTab = name;
     updateHelp();
     renderTabBar();
   }
@@ -499,11 +643,20 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     } else if (tab === 'Logs') {
       setHelp('[↑/↓] scroll   [↑@top → tabs]   [c] clear   [q] quit');
     } else if (tab === 'Mocks') {
-      setHelp('[↑/↓] browse   [↑@top → tabs]   [q] quit');
+      setHelp('[↑/↓] pick   [enter/e] edit   [a] add   [d] delete   [J/K] reorder   [↑@top → tabs]   [q] quit');
     } else if (tab === 'Plugins') {
       setHelp('[↑/↓] browse   [↑@top → tabs]   [q] quit');
     } else if (tab === 'Help') {
       setHelp('[↑/↓] scroll   [↑@top → tabs]   [q] quit');
+    } else {
+      // Plugin-contributed tab.
+      const pt = pluginTabs.find((t) => t.tabName === tab);
+      if (pt && typeof pt.instance.help === 'function') {
+        try { setHelp(pt.instance.help()); }
+        catch { setHelp('[↑@top → tabs]   [q] quit'); }
+      } else {
+        setHelp('[↑@top → tabs]   [q] quit');
+      }
     }
   }
 
@@ -520,6 +673,25 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   let pluginsEditorOpen = false;
   function navActive() { return popupCount === 0; }
 
+  // Helper: is the active tab a plugin tab?
+  function activePluginTab() {
+    return pluginTabs.find((t) => t.tabName === TABS[tabIdx]) || null;
+  }
+
+  // Helper: plugin tab key dispatch.
+  // Returns true if the plugin consumed the key, false otherwise.
+  function dispatchPluginKey(name, ch) {
+    const pt = activePluginTab();
+    if (!pt || focusZone !== 'content') return false;
+    if (typeof pt.instance.handleKey !== 'function') return false;
+    try {
+      return !!pt.instance.handleKey(name, ch);
+    } catch (e) {
+      logger.warn(`[plugin tab ${pt.tabName}] handleKey(${name}) failed: ${e.message}`);
+      return false;
+    }
+  }
+
   screen.key('left', () => {
     if (!navActive()) return;
     if (focusZone === 'tabs') { showTab(tabIdx - 1); return; }
@@ -527,7 +699,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       cfgPane = 'left';
       cfgList.focus();
       renderRight(); updateHelp();
+      return;
     }
+    dispatchPluginKey('left');
   });
 
   screen.key('right', () => {
@@ -537,7 +711,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       cfgPane = 'right';
       cfgRightFocus = 'btn';
       renderRight(); updateHelp();
+      return;
     }
+    dispatchPluginKey('right');
   });
 
   screen.key('down', () => {
@@ -551,13 +727,17 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       } else if (tab === 'Logs') {
         logBox.focus();
       } else if (tab === 'Mocks') {
-        mocksBox.focus();
-        if ((mocksBox.selected || 0) < 0) mocksBox.select(0);
+        mocksList.focus();
+        if ((mocksList.selected || 0) < 0) mocksList.select(0);
       } else if (tab === 'Plugins') {
         pluginsBox.focus();
         if ((pluginsBox.selected || 0) < 0) pluginsBox.select(0);
       } else if (tab === 'Help') {
         helpBox.focus();
+      } else {
+        // Plugin tab: let it take focus.
+        const pt = activePluginTab();
+        try { pt?.instance.onEnterFromTabs?.(); } catch {}
       }
       renderTabBar(); renderRight(); updateHelp();
       return;
@@ -585,11 +765,19 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     } else if (tab === 'Logs') {
       logBox.scroll(1); screen.render();
     } else if (tab === 'Mocks') {
-      mocksBox.select((mocksBox.selected || 0) + 1); screen.render();
+      const rules = currentConfig()?.config?.mock?.rules || [];
+      const cur = mocksList.selected || 0;
+      if (cur < rules.length - 1) {
+        mocksList.select(cur + 1);
+        renderMocksDetail();
+        screen.render();
+      }
     } else if (tab === 'Plugins') {
       pluginsBox.select((pluginsBox.selected || 0) + 1); screen.render();
     } else if (tab === 'Help') {
       helpBox.scroll(1); screen.render();
+    } else {
+      dispatchPluginKey('down');
     }
   });
 
@@ -625,9 +813,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       if (y <= 0) { focusZone = 'tabs'; renderTabBar(); updateHelp(); }
       else { logBox.scroll(-1); screen.render(); }
     } else if (tab === 'Mocks') {
-      const cur = mocksBox.selected || 0;
+      const cur = mocksList.selected || 0;
       if (cur === 0) { focusZone = 'tabs'; renderTabBar(); updateHelp(); }
-      else { mocksBox.select(cur - 1); screen.render(); }
+      else { mocksList.select(cur - 1); renderMocksDetail(); screen.render(); }
     } else if (tab === 'Plugins') {
       const cur = pluginsBox.selected || 0;
       if (cur === 0) { focusZone = 'tabs'; renderTabBar(); updateHelp(); }
@@ -636,6 +824,8 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       const y = helpBox.getScroll?.() ?? 0;
       if (y <= 0) { focusZone = 'tabs'; renderTabBar(); updateHelp(); }
       else { helpBox.scroll(-1); screen.render(); }
+    } else {
+      dispatchPluginKey('up');
     }
   });
 
@@ -646,9 +836,13 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       const tab = TABS[tabIdx];
       if (tab === 'Configs') { cfgPane = 'left'; cfgList.focus(); }
       else if (tab === 'Logs') logBox.focus();
-      else if (tab === 'Mocks') mocksBox.focus();
+      else if (tab === 'Mocks') mocksList.focus();
       else if (tab === 'Plugins') pluginsBox.focus();
       else if (tab === 'Help') helpBox.focus();
+      else {
+        const pt = activePluginTab();
+        try { pt?.instance.onEnterFromTabs?.(); } catch {}
+      }
       renderTabBar(); renderRight(); updateHelp();
       return;
     }
@@ -663,7 +857,11 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         const row = optionRows[optionsList.selected || 0];
         if (row) await openOptionEditor(row);
       }
+      return;
+    } else if (TABS[tabIdx] === 'Mocks') {
+      await openRuleEditor();
     }
+    dispatchPluginKey('enter');
   });
 
   screen.key(['q', 'C-c'], async () => {
@@ -673,15 +871,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
 
   screen.key(['s'], async () => {
     if (!active) return;
-    setStatus('stopping …', 'yellow');
-    try {
-      await onStop(active);
-      active = null; activeFile = null;
-      setStatus('no active proxy', 'white');
-      loadConfigs();
-    } catch (e) {
-      logBox.log(`{red-fg}stop failed: ${e.message}{/}`);
-    }
+    if (await stopActive()) loadConfigs();
   });
 
   screen.key(['C-r'], loadConfigs);
@@ -692,24 +882,84 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     logBox.setContent(''); screen.render();
   });
 
+  // ---------- Mocks tab keys ----------
+  function onMocksTab() {
+    return navActive() && focusZone === 'content' && TABS[tabIdx] === 'Mocks';
+  }
+  screen.key(['a'], async () => {
+    if (!onMocksTab()) return;
+    await addNewRule();
+  });
+  screen.key(['e'], async () => {
+    if (!onMocksTab()) return;
+    await openRuleEditor();
+  });
+  screen.key(['d'], async () => {
+    if (!onMocksTab()) return;
+    await deleteCurrentRule();
+  });
+  screen.key(['J', 'S-down'], () => {
+    if (!onMocksTab()) return;
+    moveCurrentRule(1);
+  });
+  screen.key(['K', 'S-up'], () => {
+    if (!onMocksTab()) return;
+    moveCurrentRule(-1);
+  });
+
   // =====================================================
   //                   START / STOP
   // =====================================================
+
+  // Compose status text for a running proxy.
+  function runningStatusText(cfg) {
+    return `running · ${cfg.name} · :${cfg.port} → ${cfg.target}`;
+  }
+
+  // Stop the currently active proxy. Returns true on success, false on failure.
+  // The status line is updated here; the caller may override afterwards.
+  async function stopActive() {
+    if (!active) return true;
+    setStatus('stopping …', 'yellow');
+    try {
+      await onStop(active);
+      active = null; activeFile = null;
+      setStatus('no active proxy', 'white');
+      return true;
+    } catch (e) {
+      logBox.log(`{red-fg}stop failed: ${e.message}{/}`);
+      setStatus('stop failed', 'red');
+      return false;
+    }
+  }
+
+  // Start the proxy for the given entry. Returns true on success.
+  async function startEntry(entry) {
+    setStatus(`starting ${entry.config.name} …`, 'yellow');
+    try {
+      active = await onStart(entry.config, entry.file);
+      activeFile = entry.file;
+      setStatus(runningStatusText(entry.config), 'green');
+      return true;
+    } catch (e) {
+      logBox.log(`{red-fg}start failed: ${e.message}{/}`);
+      setStatus('failed to start', 'red');
+      return false;
+    }
+  }
+
   async function toggleStartStop() {
     const entry = currentConfig();
     if (!entry?.config) { logBox.log('{red-fg}invalid config{/}'); return; }
+
+    // Case 1: the selected entry is already running → stop it.
     if (active && entry.file === activeFile) {
-      setStatus('stopping …', 'yellow');
-      try {
-        await onStop(active);
-        active = null; activeFile = null;
-        setStatus('no active proxy', 'white');
-      } catch (e) {
-        logBox.log(`{red-fg}stop failed: ${e.message}{/}`);
-      }
+      await stopActive();
       loadConfigs();
       return;
     }
+
+    // Case 2: a different proxy is running → ask whether to switch.
     if (active) {
       const activeEntry = configs.find((c) => c.file === activeFile);
       const pick = await promptChoice({
@@ -721,49 +971,17 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         initialIdx: 0,
       });
       if (pick === 'switch') {
-        // Stop the current one, then start the newly selected one.
-        setStatus('stopping …', 'yellow');
-        try {
-          await onStop(active);
-          active = null; activeFile = null;
-        } catch (e) {
-          logBox.log(`{red-fg}stop failed: ${e.message}{/}`);
-          setStatus('stop failed', 'red');
-          loadConfigs();
-          return;
-        }
-        setStatus(`starting ${entry.config.name} …`, 'yellow');
-        try {
-          active = await onStart(entry.config, entry.file);
-          activeFile = entry.file;
-          setStatus(
-            `running · ${entry.config.name} · :${entry.config.port} → ${entry.config.target}`,
-            'green',
-          );
-        } catch (e) {
-          logBox.log(`{red-fg}start failed: ${e.message}{/}`);
-          setStatus('failed to start', 'red');
-        }
-        loadConfigs();
+        if (await stopActive()) await startEntry(entry);
       } else {
-        // user chose close or dismissed – just log and bail.
         const name = activeEntry?.config?.name || activeFile || '(unknown)';
         logBox.log(`{yellow-fg}"${name}" is already running – stop it first (s) or pick "switch"{/}`);
       }
+      loadConfigs();
       return;
     }
-    setStatus(`starting ${entry.config.name} …`, 'yellow');
-    try {
-      active = await onStart(entry.config, entry.file);
-      activeFile = entry.file;
-      setStatus(
-        `running · ${entry.config.name} · :${entry.config.port} → ${entry.config.target}`,
-        'green',
-      );
-    } catch (e) {
-      logBox.log(`{red-fg}start failed: ${e.message}{/}`);
-      setStatus('failed to start', 'red');
-    }
+
+    // Case 3: nothing running → just start it.
+    await startEntry(entry);
     loadConfigs();
   }
 
@@ -950,19 +1168,15 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   // is currently running).
   async function restartIfActive(entry) {
     if (!active || !entry || entry.file !== activeFile) return;
-    try {
-      await onStop(active);
-      active = null;
-      active = await onStart(entry.config, entry.file);
-      activeFile = entry.file;
-      setStatus(
-        `running · ${entry.config.name} · :${entry.config.port} → ${entry.config.target}`,
-        'green',
-      );
-    } catch (e) {
-      active = null; activeFile = null;
+    if (!(await stopActive())) {
       setStatus('restart failed', 'red');
-      logBox.log(`{red-fg}restart after config change failed: ${e.message}{/}`);
+      logBox.log(`{red-fg}restart after config change: stop failed{/}`);
+      loadConfigs();
+      return;
+    }
+    if (!(await startEntry(entry))) {
+      setStatus('restart failed', 'red');
+      logBox.log(`{red-fg}restart after config change: start failed{/}`);
     }
     loadConfigs();
   }
@@ -1248,7 +1462,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
 
       let files = [];
       try {
-        files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js'));
+        files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js') && !f.endsWith('.tui.js'));
       } catch {}
       const names = files.map((f) => f.replace(/\.js$/, ''));
       // Preserve any enabled plugin name even if its file is missing.
@@ -1350,6 +1564,535 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   }
 
   // =====================================================
+  //                   MOCK RULE EDITORS
+  // =====================================================
+  const METHOD_CHOICES = [
+    { label: 'GET', value: 'GET' },
+    { label: 'POST', value: 'POST' },
+    { label: 'PUT', value: 'PUT' },
+    { label: 'PATCH', value: 'PATCH' },
+    { label: 'DELETE', value: 'DELETE' },
+    { label: 'HEAD', value: 'HEAD' },
+    { label: 'ANY (*)', value: '*' },
+  ];
+
+  const ACTION_CHOICES = [
+    { label: 'MOCK (return inline response)', value: 'MOCK' },
+    { label: 'RET_REC (replay recording)', value: 'RET_REC' },
+    { label: 'PASS (forward upstream)', value: 'PASS' },
+  ];
+
+  const FALLBACK_CHOICES = [
+    { label: '500 error', value: '500' },
+    { label: 'empty 200', value: 'empty200' },
+    { label: 'PASS upstream', value: 'PASS' },
+  ];
+
+  const MATCH_KIND_CHOICES = [
+    { label: 'exact path', value: 'exact' },
+    { label: 'pattern (with :params)', value: 'pattern' },
+    { label: 'contains (substring)', value: 'contains' },
+  ];
+
+  function applyMatchKind(rule, kind, urlText) {
+    delete rule.url;
+    delete rule.urlContains;
+    if (kind === 'contains') rule.urlContains = urlText;
+    else rule.url = urlText;
+  }
+
+  // Parse user-typed body. If it parses as JSON, store as object/array/etc;
+  // otherwise keep as plain string. Empty string → empty body.
+  function parseBodyInput(text) {
+    if (text === '') return '';
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[') ||
+        trimmed === 'null' || trimmed === 'true' || trimmed === 'false' ||
+        /^-?\d/.test(trimmed) || trimmed.startsWith('"')) {
+      try { return JSON.parse(trimmed); } catch { /* fall through to string */ }
+    }
+    return text;
+  }
+
+  async function addNewRule() {
+    const entry = currentConfig();
+    if (!entry?.config) { logBox.log('{red-fg}invalid config{/}'); return; }
+
+    const action = await promptChoice({
+      label: 'new mock rule — pick action',
+      options: ACTION_CHOICES,
+      initialIdx: 0,
+    });
+    if (action === null) return;
+
+    const method = await promptChoice({
+      label: 'method',
+      options: METHOD_CHOICES,
+      initialIdx: 0,
+    });
+    if (method === null) return;
+
+    const matchKind = await promptChoice({
+      label: 'url match type',
+      options: MATCH_KIND_CHOICES,
+      initialIdx: 0,
+    });
+    if (matchKind === null) return;
+
+    const urlVal = await promptValue({
+      label: matchKind === 'contains' ? 'url substring (e.g. /api)' : 'url path (e.g. /users/:id)',
+      initial: matchKind === 'contains' ? '/api' : '/',
+    });
+    if (urlVal === null) return;
+    const trimmed = String(urlVal).trim();
+    if (!trimmed) { logBox.log('{red-fg}url cannot be empty{/}'); return; }
+
+    const rule = { method, action };
+    applyMatchKind(rule, matchKind, trimmed);
+
+    if (action === 'MOCK') {
+      const statusVal = await promptValue({ label: 'response status', initial: '200' });
+      if (statusVal === null) return;
+      const n = Number(statusVal);
+      const status = Number.isFinite(n) ? n : 200;
+      const bodyVal = await promptValue({
+        label: 'response body — JSON or text · [Ctrl-S] save · [Esc] cancel',
+        initial: '{\n  "ok": true\n}',
+        multiline: true,
+      });
+      if (bodyVal === null) return;
+      const body = parseBodyInput(bodyVal);
+      const headers = (typeof body === 'string')
+        ? {}
+        : { 'content-type': 'application/json' };
+      rule.response = { status, headers, body };
+    } else if (action === 'RET_REC') {
+      const fb = await promptChoice({
+        label: 'fallback when no recording',
+        options: FALLBACK_CHOICES,
+        initialIdx: 0,
+      });
+      if (fb === null) return;
+      rule.fallback = fb;
+    }
+
+    entry.config.mock ||= {};
+    entry.config.mock.rules ||= [];
+    entry.config.mock.rules.push(rule);
+    saveCurrentConfig();
+    renderMocks();
+    mocksList.select(entry.config.mock.rules.length - 1);
+    renderMocks();
+    await restartIfActive(entry);
+  }
+
+  async function openRuleEditor() {
+    const entry = currentConfig();
+    if (!entry?.config) { logBox.log('{red-fg}invalid config{/}'); return; }
+    const rules = entry.config?.mock?.rules || [];
+    if (!rules.length) {
+      await addNewRule();
+      return;
+    }
+    const idx = mocksList.selected || 0;
+    if (idx < 0 || idx >= rules.length) return;
+    await editRuleFields(entry, rules[idx]);
+    renderMocks();
+    await restartIfActive(entry);
+  }
+
+  async function deleteCurrentRule() {
+    const entry = currentConfig();
+    if (!entry?.config) return;
+    const rules = entry.config?.mock?.rules || [];
+    if (!rules.length) return;
+    const idx = mocksList.selected || 0;
+    if (idx < 0 || idx >= rules.length) return;
+    const rule = rules[idx];
+    const target = ruleTargetText(rule) || '?';
+    const method = (rule.method || '*').toUpperCase();
+    const confirm = await promptChoice({
+      label: `delete rule #${idx + 1}: ${method} ${target}?`,
+      options: [
+        { label: 'cancel', value: 'cancel' },
+        { label: 'delete', value: 'delete' },
+      ],
+      initialIdx: 0,
+    });
+    if (confirm !== 'delete') return;
+    rules.splice(idx, 1);
+    saveCurrentConfig();
+    if (idx >= rules.length) mocksList.select(Math.max(0, rules.length - 1));
+    renderMocks();
+    await restartIfActive(entry);
+  }
+
+  function moveCurrentRule(dir) {
+    const entry = currentConfig();
+    if (!entry?.config) return;
+    const rules = entry.config?.mock?.rules || [];
+    if (rules.length < 2) return;
+    const idx = mocksList.selected || 0;
+    const ni = idx + dir;
+    if (ni < 0 || ni >= rules.length) return;
+    [rules[idx], rules[ni]] = [rules[ni], rules[idx]];
+    saveCurrentConfig();
+    mocksList.select(ni);
+    renderMocks();
+    restartIfActive(entry).catch(() => {});
+  }
+
+  // Field-picker editor for an existing rule. Loops until user presses Esc.
+  function editRuleFields(entry, rule) {
+    return new Promise((resolve) => {
+      popupCount++;
+      const previousFocus = screen.focused;
+
+      const box = popupBox({
+        label: ' edit rule ',
+        width: '70%', height: '70%',
+      });
+      blessed.box({
+        parent: box,
+        top: 0, left: 1, right: 1, height: 1,
+        content: '[↑/↓] field   [enter] edit field   [Esc] close',
+        style: { fg: 'white', bg: POPUP_BG },
+      });
+
+      const list = blessed.list({
+        parent: box,
+        top: 2, left: 1, right: 1, bottom: 1,
+        keys: false, mouse: true,
+        tags: true,
+        style: {
+          selected: { bg: 'blue', fg: 'white', bold: true },
+          item: { fg: 'white' },
+          bg: POPUP_BG,
+        },
+      });
+
+      function buildFields() {
+        const fields = [];
+        fields.push({
+          key: 'method',
+          label: ` method       =  {magenta-fg}${(rule.method || '*').toUpperCase()}{/}`,
+        });
+        const kind = ruleMatchKind(rule);
+        fields.push({
+          key: 'matchKind',
+          label: ` match type   =  ${kind}`,
+        });
+        fields.push({
+          key: 'url',
+          label: ` url          =  {cyan-fg}${ruleTargetText(rule) || '(none)'}{/}`,
+        });
+        const action = (rule.action || 'PASS').toUpperCase();
+        const aColor = action === 'MOCK' ? 'green' : action === 'PASS' ? 'cyan' : 'yellow';
+        fields.push({
+          key: 'action',
+          label: ` action       =  {${aColor}-fg}{bold}${action}{/}`,
+        });
+        if (action === 'RET_REC') {
+          fields.push({
+            key: 'fallback',
+            label: ` fallback     =  ${rule.fallback || '500'}`,
+          });
+        }
+        if (action === 'MOCK') {
+          rule.response ||= {};
+          fields.push({
+            key: 'status',
+            label: ` resp.status  =  ${rule.response.status ?? 200}`,
+          });
+          const hCount = Object.keys(rule.response.headers || {}).length;
+          fields.push({
+            key: 'headers',
+            label: ` resp.headers →  ${hCount} header(s) …`,
+          });
+          const body = rule.response.body;
+          const bodyKind = body == null || body === ''
+            ? '(empty)'
+            : typeof body === 'string' ? 'string'
+            : 'JSON';
+          fields.push({
+            key: 'body',
+            label: ` resp.body    →  ${bodyKind} …`,
+          });
+        }
+        return fields;
+      }
+
+      let fields = buildFields();
+      function rebuild() {
+        fields = buildFields();
+        list.setItems(fields.map((f) => f.label));
+        const sel = list.selected || 0;
+        if (sel >= fields.length) list.select(Math.max(0, fields.length - 1));
+        screen.render();
+      }
+
+      let armed = false;
+      let done = false;
+
+      const cleanup = () => {
+        if (done) return;
+        done = true;
+        armed = false;
+        deferReleasePopup();
+        saveCurrentConfig();
+        box.destroy();
+        restorePopupFocus(previousFocus);
+        screen.render();
+        resolve();
+      };
+
+      const withSubPopup = async (fn) => {
+        armed = false;
+        try { return await fn(); }
+        finally { setImmediate(() => { armed = true; list.focus(); }); }
+      };
+
+      list.key('escape', cleanup);
+      list.key('up', () => {
+        if (!armed) return;
+        const cur = list.selected || 0;
+        if (cur > 0) { list.select(cur - 1); screen.render(); }
+      });
+      list.key('down', () => {
+        if (!armed) return;
+        const cur = list.selected || 0;
+        if (cur < fields.length - 1) { list.select(cur + 1); screen.render(); }
+      });
+
+      list.key('enter', async () => {
+        if (!armed) return;
+        const f = fields[list.selected || 0];
+        if (!f) return;
+        await editField(f.key);
+        rebuild();
+        list.focus();
+      });
+
+      async function editField(key) {
+        if (key === 'method') {
+          const cur = (rule.method || '*').toUpperCase();
+          const idx = METHOD_CHOICES.findIndex((c) => c.value === cur);
+          const v = await withSubPopup(() => promptChoice({
+            label: 'method',
+            options: METHOD_CHOICES,
+            initialIdx: idx >= 0 ? idx : METHOD_CHOICES.length - 1,
+          }));
+          if (v !== null) rule.method = v;
+          return;
+        }
+        if (key === 'matchKind') {
+          const cur = ruleMatchKind(rule);
+          const idx = MATCH_KIND_CHOICES.findIndex((c) => c.value === cur);
+          const v = await withSubPopup(() => promptChoice({
+            label: 'url match type',
+            options: MATCH_KIND_CHOICES,
+            initialIdx: idx >= 0 ? idx : 0,
+          }));
+          if (v === null) return;
+          applyMatchKind(rule, v, ruleTargetText(rule));
+          return;
+        }
+        if (key === 'url') {
+          const isContains = rule.urlContains != null;
+          const cur = ruleTargetText(rule);
+          const v = await withSubPopup(() => promptValue({
+            label: isContains ? 'url substring' : 'url path',
+            initial: cur,
+          }));
+          if (v === null) return;
+          if (isContains) rule.urlContains = v;
+          else rule.url = v;
+          return;
+        }
+        if (key === 'action') {
+          const cur = (rule.action || 'PASS').toUpperCase();
+          const idx = ACTION_CHOICES.findIndex((c) => c.value === cur);
+          const v = await withSubPopup(() => promptChoice({
+            label: 'action',
+            options: ACTION_CHOICES,
+            initialIdx: idx >= 0 ? idx : 0,
+          }));
+          if (v === null) return;
+          rule.action = v;
+          if (v === 'MOCK') {
+            rule.response ||= { status: 200, headers: { 'content-type': 'application/json' }, body: '' };
+            delete rule.fallback;
+          } else if (v === 'RET_REC') {
+            rule.fallback ||= '500';
+            delete rule.response;
+          } else {
+            delete rule.response;
+            delete rule.fallback;
+          }
+          return;
+        }
+        if (key === 'fallback') {
+          const cur = rule.fallback || '500';
+          const idx = FALLBACK_CHOICES.findIndex((c) => c.value === cur);
+          const v = await withSubPopup(() => promptChoice({
+            label: 'fallback (RET_REC miss)',
+            options: FALLBACK_CHOICES,
+            initialIdx: idx >= 0 ? idx : 0,
+          }));
+          if (v !== null) rule.fallback = v;
+          return;
+        }
+        if (key === 'status') {
+          rule.response ||= {};
+          const v = await withSubPopup(() => promptValue({
+            label: 'response status (number)',
+            initial: String(rule.response.status ?? 200),
+          }));
+          if (v === null) return;
+          const n = Number(v);
+          if (!Number.isFinite(n)) {
+            logBox.log('{red-fg}invalid status (must be a number){/}');
+            return;
+          }
+          rule.response.status = n;
+          return;
+        }
+        if (key === 'headers') {
+          rule.response ||= {};
+          rule.response.headers ||= {};
+          await withSubPopup(() => editHeadersObject(rule.response.headers, ' response headers '));
+          return;
+        }
+        if (key === 'body') {
+          rule.response ||= {};
+          const cur = rule.response.body;
+          const initialText = cur == null ? ''
+            : typeof cur === 'string' ? cur
+            : (() => { try { return JSON.stringify(cur, null, 2); } catch { return String(cur); } })();
+          const v = await withSubPopup(() => promptValue({
+            label: 'response body — JSON or text · [Ctrl-S] save · [Esc] cancel',
+            initial: initialText,
+            multiline: true,
+          }));
+          if (v === null) return;
+          rule.response.body = parseBodyInput(v);
+        }
+      }
+
+      rebuild();
+      setImmediate(() => {
+        if (done) return;
+        armed = true;
+        list.focus();
+        screen.render();
+      });
+    });
+  }
+
+  // Generic header-object editor (for rule.response.headers).
+  // Mirrors openHeadersEditor but works on any plain object reference.
+  function editHeadersObject(headersObj, label) {
+    return new Promise((resolve) => {
+      popupCount++;
+      const previousFocus = screen.focused;
+
+      const box = popupBox({ label, width: '70%', height: '60%' });
+      blessed.box({
+        parent: box,
+        top: 0, left: 1, right: 1, height: 1,
+        content: '[↑/↓] pick  [enter] edit  [a] add  [d] delete  [Esc] close',
+        style: { fg: 'white', bg: POPUP_BG },
+      });
+      const list = blessed.list({
+        parent: box,
+        top: 2, left: 1, right: 1, bottom: 1,
+        keys: true, mouse: true,
+        tags: true,
+        style: {
+          selected: { bg: 'blue', fg: 'white', bold: true },
+          item: { fg: 'white' },
+          bg: POPUP_BG,
+        },
+      });
+
+      function rebuild() {
+        const entries = Object.entries(headersObj);
+        if (!entries.length) {
+          list.setItems([' (no headers — press [a] to add)']);
+        } else {
+          list.setItems(entries.map(([k, v]) => ` {cyan-fg}${k}{/}  :  ${prettyValue(v)}`));
+        }
+        screen.render();
+      }
+
+      let cleanedUp = false;
+      let armed = false;
+
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        armed = false;
+        deferReleasePopup();
+        box.destroy();
+        restorePopupFocus(previousFocus);
+        screen.render();
+        resolve();
+      };
+
+      const withSubPopup = async (fn) => {
+        armed = false;
+        try { return await fn(); }
+        finally { setImmediate(() => { armed = true; }); }
+      };
+
+      list.key('escape', cleanup);
+
+      list.key('enter', async () => {
+        if (!armed) return;
+        const entries = Object.entries(headersObj);
+        if (!entries.length) return;
+        const idx = list.selected || 0;
+        const [k, v] = entries[idx];
+        const nv = await withSubPopup(() => promptValue({
+          label: `edit header ${k}`,
+          initial: String(v ?? ''),
+        }));
+        if (nv === null) { list.focus(); return; }
+        headersObj[k] = nv;
+        rebuild();
+        list.focus();
+      });
+
+      list.key('a', async () => {
+        if (!armed) return;
+        const result = await withSubPopup(() => promptHeaderForm());
+        if (result === null) { list.focus(); return; }
+        headersObj[result.name] = result.value;
+        rebuild();
+        list.focus();
+      });
+
+      list.key('d', () => {
+        if (!armed) return;
+        const entries = Object.entries(headersObj);
+        if (!entries.length) return;
+        const idx = list.selected || 0;
+        const [k] = entries[idx];
+        delete headersObj[k];
+        rebuild();
+      });
+
+      rebuild();
+      setImmediate(() => {
+        if (cleanedUp) return;
+        armed = true;
+        list.focus();
+        screen.render();
+      });
+    });
+  }
+
+  // =====================================================
   //                      LOGGING
   // =====================================================
   logger.on('log', (e) => {
@@ -1372,6 +2115,105 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   // =====================================================
   //                       BOOT
   // =====================================================
+
+  // Recompute which plugin tabs are visible based on the currently-selected
+  // config's "plugins" list. Called from renderRight() and after the active
+  // proxy is started/stopped.
+  function recomputeTabs() {
+    const cfg = currentConfig()?.config;
+    const visible = pluginTabs
+      .filter((t) => {
+        try { return !!t.instance.isEnabled?.(cfg); } catch { return false; }
+      })
+      .map((t) => t.tabName);
+    const newTabs = [...STATIC_LEFT_TABS, ...visible, ...STATIC_RIGHT_TABS];
+    if (newTabs.length === TABS.length && newTabs.every((n, i) => n === TABS[i])) return;
+    const currentName = TABS[tabIdx];
+    TABS = newTabs;
+    let nextIdx = TABS.indexOf(currentName);
+    if (nextIdx === -1) {
+      if (focusZone === 'content') focusZone = 'tabs';
+      nextIdx = Math.min(tabIdx, TABS.length - 1);
+      if (nextIdx < 0) nextIdx = 0;
+      showTab(nextIdx);
+    } else {
+      tabIdx = nextIdx;
+      renderTabBar();
+    }
+  }
+
+  // ---------- discover & register plugin TUI extensions ----------
+  // Convention: any file matching `<name>.tui.js` inside `pluginsDir` may
+  // export a default object describing a TUI tab:
+  //   {
+  //     tabName: 'Bucket',
+  //     isEnabled(cfg) -> boolean,
+  //     build({ screen, page, helpers }) -> instance
+  //   }
+  // The returned instance may expose:
+  //   onShow(entry?), onHide(), onEnterFromTabs(),
+  //   handleKey(name, ch) -> boolean,
+  //   renderFrames(isActive),
+  //   help() -> string,
+  //   isEnabled(cfg) -> boolean       (mirrors module-level isEnabled)
+  const pluginHelpers = {
+    blessed,
+    logger,
+    pluginsDir,
+    configsDir,
+    getConfigEntry: () => currentConfig(),
+    saveConfigEntry: () => saveCurrentConfig(),
+    restartIfActive: (entry) => restartIfActive(entry || currentConfig()),
+    reloadConfigs: () => loadConfigs(),
+    promptValue,
+    promptChoice,
+    popupBox,
+    pushPopup: () => { popupCount += 1; },
+    // Mirrors `deferReleasePopup` above: decrement on next tick so any
+    // trailing Enter that submitted the popup does not propagate to the
+    // screen-level handler and trigger an action in the underlying view.
+    // The Math.max(0, …) guard means rapid open/close cannot drive
+    // popupCount negative.
+    popPopup: () => { setImmediate(() => { popupCount = Math.max(0, popupCount - 1); }); },
+    leaveContentFocus: () => {
+      focusZone = 'tabs';
+      renderTabBar();
+      updateHelp();
+    },
+    requestRender: () => screen.render(),
+    requestHelpRefresh: () => updateHelp(),
+    POPUP_BG, INPUT_BG, INPUT_FG,
+  };
+
+  if (fs.existsSync(pluginsDir)) {
+    const tuiFiles = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.tui.js'));
+    for (const file of tuiFiles) {
+      const full = path.join(pluginsDir, file);
+      try {
+        const mod = await import(url.pathToFileURL(full).href);
+        const exp = mod.default ?? mod;
+        if (!exp || typeof exp !== 'object') continue;
+        if (!exp.tabName || typeof exp.tabName !== 'string') continue;
+        const page = createPluginPage();
+        pages[exp.tabName] = page;
+        let instance;
+        if (typeof exp.build === 'function') {
+          instance = await exp.build({ screen, page, helpers: pluginHelpers });
+        } else {
+          instance = {};
+        }
+        // Surface the module-level isEnabled if instance didn't provide one.
+        if (typeof instance.isEnabled !== 'function' && typeof exp.isEnabled === 'function') {
+          instance.isEnabled = exp.isEnabled;
+        }
+        pluginTabs.push({ tabName: exp.tabName, instance, page });
+        logger.info(`[tui] plugin tab registered: ${exp.tabName}`);
+      } catch (e) {
+        logger.warn(`[tui] failed to load plugin tab ${file}: ${e.message}`);
+      }
+    }
+  }
+
   loadConfigs();
   showTab(0);
   renderTabBar();
