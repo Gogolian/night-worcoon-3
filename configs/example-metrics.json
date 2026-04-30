@@ -1,0 +1,26 @@
+{
+  "name": "metrics-demo",
+  "port": 8080,
+  "target": "https://httpbin.org",
+  "changeOrigin": true,
+  "followRedirects": false,
+  "plugins": ["metrics", "mock", "tap"],
+  "metrics": {
+    "endpoint": "/__metrics",
+    "maxSamples": 1000
+  },
+  "mock": {
+    "rules": [
+      {
+        "method": "GET",
+        "url": "/mock/hello",
+        "action": "MOCK",
+        "response": {
+          "status": 200,
+          "headers": { "content-type": "application/json" },
+          "body": { "message": "hello from night-worcoon-3" }
+        }
+      }
+    ]
+  }
+}

@@ -103,6 +103,10 @@
           <td>Config for the <code>recorder</code> plugin.</td>
         </tr>
         <tr>
+          <td><code>diff</code></td><td>object</td><td>no</td>
+          <td>Config for the <code>diff</code> shadow comparison plugin.</td>
+        </tr>
+        <tr>
           <td><code>bucket</code></td><td>object</td><td>no</td>
           <td>Config for the <code>bucket</code> plugin.</td>
         </tr>
@@ -115,6 +119,10 @@
           <td>Config for the <code>latency</code> plugin.</td>
         </tr>
         <tr>
+          <td><code>metrics</code></td><td>object</td><td>no</td>
+          <td>Config for the <code>metrics</code> plugin. See <a href="plugins.html#metrics">Plugins → metrics</a>.</td>
+        </tr>
+        <tr>
           <td><code>wsTap</code></td><td>object</td><td>no</td>
           <td>Config for the <code>ws-tap</code> plugin.</td>
         </tr>
@@ -124,11 +132,12 @@
     <div class="callout warn">
       <span class="label">Plugin order matters</span>
       <code>plugins</code> is the pipeline order. The recommended ordering is
-      <code>["post", "cors", "latency", "bucket", "mock", "recorder", "tap"]</code> — that
-      way <code>post</code> enables the request-client tab, <code>cors</code> handles preflights first, <code>latency</code>
-      delays/fails before any work is done, <code>bucket</code> handles CRUD,
-      <code>mock</code> handles canned/replayed responses, and
-      <code>recorder</code> saves upstream traffic before <code>tap</code>
+      <code>["post", "metrics", "cors", "latency", "bucket", "mock", "diff", "recorder", "tap"]</code> — that
+      way <code>post</code> enables the request-client tab, <code>metrics</code> observes every response,
+      <code>cors</code> handles preflights, <code>latency</code> delays/fails before any work is
+      done, <code>bucket</code> handles CRUD, <code>mock</code> handles
+      canned/replayed responses, <code>diff</code> shadows replayed recordings,
+      and <code>recorder</code> saves upstream traffic before <code>tap</code>
       observes the final transaction stream.
     </div>
 
@@ -162,6 +171,16 @@
     <h3>recorder</h3>
 <pre><code>"recorder": { "recordAll": false }</code></pre>
     <p><code>recordAll: true</code> also captures mocked / replayed responses.</p>
+
+    <h3>diff</h3>
+<pre><code>"plugins": ["mock", "diff", "recorder", "tap"],
+"diff": {
+  "ignoreHeaders": ["date", "x-request-id"],
+  "maxBodyDiffs": 20,
+  "logMatches": false
+}</code></pre>
+    <p>When <code>RET_REC</code> hits, <code>diff</code> shadows the same request
+    to upstream and reports status, header, and JSON body drift.</p>
 
     <h3>tap</h3>
 <pre><code>"plugins": ["post", "mock", "recorder", "tap"]</code></pre>
@@ -210,6 +229,16 @@
   ]
 }</code></pre>
 
+    <h3>metrics</h3>
+<pre><code>"metrics": {
+  "endpoint": "/__metrics",   // optional; default /__metrics
+  "maxSamples": 1000          // optional; rolling latency window per route
+}</code></pre>
+    <p>Serves Prometheus text at <code>GET /__metrics</code>.  Add the
+    <strong>Metrics</strong> TUI tab showing per-route counters, latency
+    percentiles, and bytes in/out.  Place <code>metrics</code> first in
+    <code>plugins</code> for complete coverage.</p>
+
     <h3>wsTap</h3>
 <pre><code>"wsTap": {
   "log": true,
@@ -249,6 +278,7 @@
       <li><code>configs/httpbin.json</code> — mock + recorder + tap against httpbin.</li>
       <li><code>configs/example-bucket.json</code> — bucket + mock + recorder, three collections, three id patterns.</li>
       <li><code>configs/example-sqlite.json</code> — same idea but with SQLite storage.</li>
+      <li><code>configs/example-metrics.json</code> — metrics + mock + tap with Prometheus endpoint.</li>
     </ul>
 
     <div class="footer">
