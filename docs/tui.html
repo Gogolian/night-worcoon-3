@@ -74,6 +74,12 @@ npm run start:headless -- --config httpbin.json # no TUI, just the proxy</code><
         selected request as cURL.</p>
       </div>
       <div class="card">
+        <h3>Metrics</h3>
+        <p>When the <code>metrics</code> plugin is enabled, see a live per-route
+        table: request count, error rate (5xx%), p50/p95/p99 latency, and bytes
+        in/out.  Press <kbd>r</kbd> to reset the displayed counters.</p>
+      </div>
+      <div class="card">
         <h3>Help</h3>
         <p>Quick keybinding cheat-sheet, in-app.</p>
       </div>
@@ -105,7 +111,7 @@ npm run start:headless -- --config httpbin.json # no TUI, just the proxy</code><
   ┌──────────────────────────────────────────────────────────────┐
   │  night-worcoon-3 · middleware proxy                          │  ← title bar
   ├──────────────────────────────────────────────────────────────┤
-  │  Configs   Logs   Mocks   Plugins   Tap   Help               │  ← tab bar
+  │  Configs   Logs   Mocks   Plugins   Tap   Metrics   Help      │  ← tab bar
   ├──────────────────────────────────────────────────────────────┤
   │                                                              │
   │             active tab content (one box per tab)             │

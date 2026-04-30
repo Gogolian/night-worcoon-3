@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "description": "Tracks which source files each HTML doc page covers, plus a SHA-256 fingerprint of each source at the time the docs were last refreshed. Run `node docs/check-docs.mjs` to detect drift, then `--update` to refresh hashes after editing the affected pages.",
-  "generatedAt": "2026-04-30T21:27:19.710Z",
+  "generatedAt": "2026-04-30T21:33:36.548Z",
   "docs": {
     "docs/index.html": "Overview, quick start, project layout.",
     "docs/architecture.html": "Big picture, request lifecycle, ctx shape, module map.",
@@ -200,6 +200,32 @@
         "docs/extending.html"
       ],
       "summary": "Built-in WebSocket tap plugin. Logs frames, records sessions to JSON, and supports PASS/DROP/MOCK/REPLAY rules."
+    },
+    "plugins/metrics.js": {
+      "sha256": "bad52a814412942aaa22f8eeeaf04b18d102daafa50b66fe34c9e1b83808d6f4",
+      "lines": 183,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html"
+      ],
+      "summary": "Metrics plugin. onRequest intercepts GET /__metrics and serves Prometheus text format. onResponse tracks per-route counters (requests, errors, bytesIn, bytesOut) and rolling latency samples (p50/p95/p99). Emits 'metrics' trace events for the TUI tab."
+    },
+    "plugins/metrics.tui.js": {
+      "sha256": "f009196fb749910eca633b3dab9fc09add543a39df35e835100ca7274bff28c9",
+      "lines": 266,
+      "covers": [
+        "docs/tui.html",
+        "docs/plugins.html"
+      ],
+      "summary": "Plugin TUI tab for live per-route metrics: request count, error rate, p50/p95/p99 latency, bytes in/out. Supports delta reset ([r]) and keyboard navigation."
+    },
+    "configs/example-metrics.json": {
+      "sha256": "5da9b05d82ff3f77efba7e33960821c4087aae1a263183a47976401be025a300",
+      "lines": 27,
+      "covers": [
+        "docs/configs.html"
+      ],
+      "summary": "Example: metrics + mock + tap against httpbin.org with Prometheus endpoint at /__metrics."
     },
     "plugins/har-export.js": {
       "sha256": "8e5c52d7c9f66e24c8b2694b157839c147be45f934c07445e3295bd83c58a167",
