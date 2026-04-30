@@ -170,6 +170,10 @@ export default {
       renderAll();
     }
 
+    function zeroBaseline() {
+      return { requests: 0, errors: 0, bytesIn: 0, bytesOut: 0 };
+    }
+
     function move(delta) {
       const len = routes.size;
       const next = selected + delta;
@@ -193,7 +197,7 @@ export default {
       if (e.kind !== 'metrics') return;
       const d = e.data;
       const key = `${d.method} ${d.path}`;
-      const base = baseline.get(key) || { requests: 0, errors: 0, bytesIn: 0, bytesOut: 0 };
+      const base = baseline.get(key) || zeroBaseline();
 
       routes.set(key, {
         method: d.method,
