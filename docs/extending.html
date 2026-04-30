@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Write a plugin · night-worcoon-3</title>
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand">night-worcoon-3</div>
+    <div class="tagline">TUI middleware proxy · docs</div>
+    <nav>
+      <h4>Get started</h4>
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <h4>Reference</h4>
+      <a href="configs.html">Configs</a>
+      <a href="plugins.html">Plugins</a>
+      <a href="storage.html">Storage</a>
+      <a href="tui.html">TUI</a>
+      <h4>Guides</h4>
+      <a href="extending.html">Write a plugin</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+
+    <h1>Write a plugin</h1>
+
+    <div class="callout tldr">
+      <span class="label">TL;DR</span>
+      Drop a file in <code>plugins/</code> that <code>export default</code>s
+      either an object or a factory. Set <code>name</code>, optionally
+      implement <code>onRequest</code> / <code>onResponse</code> / <code>init</code>,
+      then add the name to your config's <code>plugins</code> array.
+    </div>
+
+    <h2>Skeleton</h2>
+
+    <p>Save as <code>plugins/my-plugin.js</code>:</p>
+
+<pre><code>// Factory form — recommended. Gets `{ config, logger }` at load time.
+export default function create({ config, logger }) {
+  // Read your plugin's slice of the profile JSON, e.g. config.myPlugin
+  const settings = config.myPlugin || {};
+
+  return {
+    name: 'my-plugin',                          // must match the entry in config.plugins
+
+    async init({ config, logger }) {
+      // optional — runs once at startup
+    },
+
+    async onRequest(ctx) {
+      // Inspect ctx.req. To short-circuit, set ctx.response and (optionally)
+      // ctx.meta.source. The pipeline stops at the first plugin that does this.
+      //
+      // Example: answer "/ping" with "pong"
+      if (ctx.req.path === '/ping') {
+        ctx.response = {
+          status: 200,
+          headers: { 'content-type': 'text/plain' },
+          body: Buffer.from('pong'),
+        };
+        ctx.meta.source = 'my-plugin';
+      }
+    },
+
+    async onResponse(ctx) {
+      // Always runs (for every plugin). Inspect or mutate ctx.response.
+      // Example: stamp a header onto every reply.
+      if (ctx.response &amp;&amp; ctx.response.headers) {
+        ctx.response.headers['x-served-by'] = 'my-plugin';
+      }
+    },
+  };
+}</code></pre>
+
+    <p>Now activate it in your profile:</p>
+
+<pre><code>{
+  "name": "demo",
+  "port": 8080,
+  "target": "https://httpbin.org",
+  "plugins": ["my-plugin"]
+}</code></pre>
+
+    <h2>Object form (no config dependency)</h2>
+
+<pre><code>// Equally valid for trivial plugins:
+export default {
+  name: 'logger-shim',
+  async onResponse(ctx) {
+    ctx.logger.info(`served ${ctx.req.method} ${ctx.req.url} → ${ctx.response?.status}`);
+  },
+};</code></pre>
+
+    <h2>The <code>ctx</code> object</h2>
+
+    <p>Identical for both hooks. Reference:</p>
+
+<pre><code>ctx = {
+  config,    // parsed profile JSON
+  storage,   // FsStorage | SqliteStorage — has save(rec) and findBest(...)
+  logger,    // shared logger (info, warn, error, debug, trace)
+
+  req: {
+    method,    // 'GET'
+    url,       // raw, may include '?...'
+    path,      // '?'-stripped
+    query,     // string after '?', '' if none
+    headers,   // node http headers
+    body,      // Buffer
+  },
+
+  response: null | { status, headers, body },   // set to short-circuit
+  meta:    { source: null | 'proxy' | 'mock' | 'ret_rec'
+                          | 'ret_rec_fallback' | 'bucket' | 'cors'
+                          | 'latency_fail' | &lt;your tag&gt; },
+}</code></pre>
+
+    <h2>The two hooks</h2>
+
+    <h3><code>onRequest(ctx)</code></h3>
+
+    <ul class="clean">
+      <li>Runs <strong>before</strong> the upstream is contacted.</li>
+      <li>The pipeline stops at the first plugin that sets <code>ctx.response</code> to a truthy value.</li>
+      <li>If you don't want to short-circuit, just leave <code>ctx.response</code> alone.</li>
+    </ul>
+
+    <h3><code>onResponse(ctx)</code></h3>
+
+    <ul class="clean">
+      <li>Runs <strong>after</strong> a response exists — whether it came from a previous plugin, the upstream, or the manual forwarder.</li>
+      <li><strong>Every</strong> enabled plugin's <code>onResponse</code> runs, in pipeline order. There is no short-circuit here.</li>
+      <li>Look at <code>ctx.meta.source</code> to decide whether you care
+      (e.g. recorder skips non-<code>'proxy'</code> sources by default).</li>
+      <li>Mutate <code>ctx.response.headers</code> / <code>body</code> /
+      <code>status</code> in place — your changes are what the client sees.</li>
+    </ul>
+
+    <h2>Patterns from built-in plugins</h2>
+
+    <table>
+      <thead><tr><th>Pattern</th><th>Where it's used</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Match by URL rule (substring / <code>:id</code> regex / exact)</td>
+          <td><code>plugins/mock.js</code>, <code>plugins/latency.js</code> — both use <code>compileRule</code> / <code>matchRule</code> from <code>src/match.js</code>.</td>
+        </tr>
+        <tr>
+          <td>Persist state to disk on every mutation</td>
+          <td><code>plugins/bucket.js</code> — <code>saveState()</code> writes the whole map to <code>persistPath</code> as JSON.</td>
+        </tr>
+        <tr>
+          <td>Save a recording via the storage backend</td>
+          <td><code>plugins/recorder.js</code> — uses <code>buildRecord()</code> from <code>src/storage.js</code> then <code>ctx.storage.save()</code>.</td>
+        </tr>
+        <tr>
+          <td>Read a recording for replay</td>
+          <td><code>plugins/mock.js</code> (action <code>RET_REC</code>) — <code>ctx.storage.findBest({method, path, query})</code> then <code>decodeBody()</code>.</td>
+        </tr>
+        <tr>
+          <td>Decorate every response in <code>onResponse</code></td>
+          <td><code>plugins/cors.js</code> — merges CORS headers into whatever response is on <code>ctx</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Imports you can rely on</h2>
+
+<pre><code>// URL/rule matching helpers
+import { compileRule, matchRule, splitPathQuery } from '../src/match.js';
+
+// Recording shape + helpers
+import { buildRecord, decodeBody } from '../src/storage.js';</code></pre>
+
+    <h2>Gotchas</h2>
+
+    <div class="callout warn">
+      <span class="label">Bodies are Buffers</span>
+      <code>ctx.req.body</code> and <code>ctx.response.body</code> are
+      <code>Buffer</code>s, never strings. Use
+      <code>buf.toString('utf8')</code> to read text, and wrap your output
+      in <code>Buffer.from(...)</code> when building a response.
+    </div>
+
+    <div class="callout warn">
+      <span class="label">Order matters</span>
+      Your plugin only runs in the position you put it in
+      <code>config.plugins</code>. Putting <code>recorder</code> before
+      <code>mock</code>, for instance, would have the recorder save mocked
+      responses (since it's seeing them in <code>onResponse</code> regardless
+      — but the <em>order</em> still controls who short-circuits first on
+      <code>onRequest</code>).
+    </div>
+
+    <div class="callout warn">
+      <span class="label">Plugins discovery is by directory</span>
+      All <code>.js</code> files in <code>plugins/</code> are
+      <code>import()</code>ed at load time, even if they're not enabled.
+      Don't put helper files there — put them next to your plugin in a
+      subfolder, or in <code>src/</code>.
+    </div>
+
+    <div class="callout danger">
+      <span class="label">No WebSocket hooks (yet)</span>
+      <code>ws://</code> upgrades bypass the plugin pipeline entirely.
+      If you need to intercept WS frames, you'll have to extend
+      <code>src/proxy.js</code> directly.
+    </div>
+
+    <h2>Testing your plugin</h2>
+
+    <p>There's no test framework in the repo. The fastest loop is:</p>
+
+    <ol class="clean">
+      <li>Add your plugin to <code>plugins/</code>.</li>
+      <li>Reference it in a config under <code>configs/</code>.</li>
+      <li><code>npm run start:headless -- --config &lt;your-config.json&gt;</code>.</li>
+      <li><code>curl</code> the proxy port and read the stdout trace lines.</li>
+    </ol>
+
+    <div class="footer">
+      Back to <a href="index.html">Overview</a> ·
+      see all <a href="plugins.html">built-in plugins</a>
+    </div>
+
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

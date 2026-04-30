@@ -20,7 +20,7 @@ export async function loadPlugins({ pluginsDir, config, logger }) {
     return [];
   }
 
-  const files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js'));
+  const files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js') && !f.endsWith('.tui.js'));
   const instances = [];
 
   for (const file of files) {
