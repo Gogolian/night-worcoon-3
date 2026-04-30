@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Configs · night-worcoon-3</title>
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand">night-worcoon-3</div>
+    <div class="tagline">TUI middleware proxy · docs</div>
+    <nav>
+      <h4>Get started</h4>
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <h4>Reference</h4>
+      <a href="configs.html">Configs</a>
+      <a href="plugins.html">Plugins</a>
+      <a href="storage.html">Storage</a>
+      <a href="tui.html">TUI</a>
+      <h4>Guides</h4>
+      <a href="extending.html">Write a plugin</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+
+    <h1>Configs</h1>
+
+    <div class="callout tldr">
+      <span class="label">TL;DR</span>
+      One JSON file per "profile" lives in <code>configs/</code>. Each file
+      tells the proxy what port to listen on, what upstream to forward to,
+      and which plugins to run. The TUI lists every <code>.json</code> in
+      that folder.
+    </div>
+
+    <h2>Minimal example</h2>
+
+<pre><code>{
+  "name": "httpbin",
+  "port": 8080,
+  "target": "https://httpbin.org",
+  "changeOrigin": true,
+  "plugins": ["mock", "recorder"],
+  "storage": { "type": "fs", "path": "./recordings/httpbin" }
+}</code></pre>
+
+    <h2>Top-level fields</h2>
+
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>name</code></td><td>string</td><td>yes</td>
+          <td>Human label shown in the TUI and used as the default storage subfolder.</td>
+        </tr>
+        <tr>
+          <td><code>port</code></td><td>number</td><td>yes</td>
+          <td>Local port the proxy listens on.</td>
+        </tr>
+        <tr>
+          <td><code>target</code></td><td>string (URL)</td><td>yes</td>
+          <td>Upstream base URL, e.g. <code>https://httpbin.org</code>.</td>
+        </tr>
+        <tr>
+          <td><code>changeOrigin</code></td><td>boolean</td><td>no</td>
+          <td>Rewrites the outgoing <code>Host</code> header to match the
+          target. Almost always <code>true</code> for HTTPS upstreams.</td>
+        </tr>
+        <tr>
+          <td><code>followRedirects</code></td><td>boolean</td><td>no</td>
+          <td>If <code>true</code>, the manual forwarder follows
+          <code>301/302/303/307/308</code> internally. Default: <code>false</code>.</td>
+        </tr>
+        <tr>
+          <td><code>secure</code></td><td>boolean</td><td>no</td>
+          <td>Set <code>false</code> to skip TLS certificate verification
+          when forwarding. Default: <code>true</code>.</td>
+        </tr>
+        <tr>
+          <td><code>requestHeaders</code></td><td>object</td><td>no</td>
+          <td>Headers added/overridden on every outgoing request to the upstream.</td>
+        </tr>
+        <tr>
+          <td><code>plugins</code></td><td>string[]</td><td>no</td>
+          <td>Names of plugins to enable, in pipeline order. Only plugins
+          listed here are loaded for this profile.</td>
+        </tr>
+        <tr>
+          <td><code>storage</code></td><td>object</td><td>no</td>
+          <td>Recording backend. See <a href="storage.html">Storage</a>.</td>
+        </tr>
+        <tr>
+          <td><code>mock</code></td><td>object</td><td>no</td>
+          <td>Config for the <code>mock</code> plugin. See <a href="plugins.html#mock">Plugins → mock</a>.</td>
+        </tr>
+        <tr>
+          <td><code>recorder</code></td><td>object</td><td>no</td>
+          <td>Config for the <code>recorder</code> plugin.</td>
+        </tr>
+        <tr>
+          <td><code>bucket</code></td><td>object</td><td>no</td>
+          <td>Config for the <code>bucket</code> plugin.</td>
+        </tr>
+        <tr>
+          <td><code>cors</code></td><td>object</td><td>no</td>
+          <td>Config for the <code>cors</code> plugin.</td>
+        </tr>
+        <tr>
+          <td><code>latency</code></td><td>object</td><td>no</td>
+          <td>Config for the <code>latency</code> plugin.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <span class="label">Plugin order matters</span>
+      <code>plugins</code> is the pipeline order. The recommended ordering is
+      <code>["cors", "latency", "bucket", "mock", "recorder"]</code> — that
+      way <code>cors</code> handles preflights first, <code>latency</code>
+      delays/fails before any work is done, <code>bucket</code> handles CRUD,
+      <code>mock</code> handles canned/replayed responses, and
+      <code>recorder</code> only sees what actually went upstream.
+    </div>
+
+    <h2>Storage shorthand</h2>
+
+<pre><code>"storage": { "type": "fs",     "path": "./recordings/httpbin" }
+// or
+"storage": { "type": "sqlite", "path": "./recordings/httpbin.db" }</code></pre>
+
+    <p>If you omit <code>storage</code>, the proxy defaults to
+    <code>fs</code> at <code>./recordings/&lt;name&gt;</code>.</p>
+
+    <h2>Plugin sub-blocks (cheat sheet)</h2>
+
+    <p>Each plugin reads its own top-level key. Full reference is on the
+    <a href="plugins.html">Plugins</a> page.</p>
+
+    <h3>mock</h3>
+<pre><code>"mock": {
+  "rules": [
+    { "method": "GET", "url": "/users/:id", "action": "RET_REC", "fallback": "PASS" },
+    { "method": "POST", "url": "/login",    "action": "MOCK",
+      "response": { "status": 200, "body": { "token": "abc" } } },
+    { "method": "*", "urlContains": "/debug", "action": "PASS" }
+  ]
+}</code></pre>
+    <p>Actions: <code>PASS</code> · <code>MOCK</code> · <code>RET_REC</code>.
+    Fallbacks (RET_REC miss): <code>"PASS"</code>, <code>"empty200"</code>,
+    or <code>"500"</code> (default).</p>
+
+    <h3>recorder</h3>
+<pre><code>"recorder": { "recordAll": false }</code></pre>
+    <p><code>recordAll: true</code> also captures mocked / replayed responses.</p>
+
+    <h3>bucket</h3>
+<pre><code>"bucket": {
+  "persistPath": "./recordings/myproxy-bucket.json",
+  "collections": [
+    { "path": "/api/users",    "idPattern": "numeric" },
+    { "path": "/api/sessions", "idPattern": "uuid",
+      "responseTemplate": { "session": "{{id}}", "user": "{{user}}" } },
+    { "path": "/api/tokens",   "idPattern": "regex:[A-Z]{4}-\\d{4}" }
+  ]
+}</code></pre>
+    <p><code>idPattern</code>: <code>uuid</code> · <code>numeric</code> ·
+    <code>alphanumeric</code> · <code>regex:&lt;pattern&gt;</code>.</p>
+
+    <h3>cors</h3>
+<pre><code>"cors": {
+  "origin": "*",                                     // or "https://app.example.com" or ["a","b"]
+  "methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  "headers": "Content-Type,Authorization",
+  "exposeHeaders": "X-Request-Id",
+  "credentials": false,
+  "maxAge": 600
+}</code></pre>
+
+    <h3>latency</h3>
+<pre><code>"latency": {
+  "delayMs": 300,
+  "jitterMs": 200,
+  "failRate": 0.1,
+  "failStatus": 503,
+  "failBody": "upstream down",
+  "rules": [
+    { "urlContains": "/slow", "delayMs": 3000 },
+    { "method": "POST", "url": "/api/flaky", "failRate": 0.5 }
+  ]
+}</code></pre>
+
+    <h2>Rule matching (used by mock + latency)</h2>
+
+    <table>
+      <thead><tr><th>Field</th><th>Behaviour</th></tr></thead>
+      <tbody>
+        <tr><td><code>urlContains: "/api"</code></td><td>Substring match against the path.</td></tr>
+        <tr><td><code>url: "/users/:id"</code></td><td>Regex with <code>:segment</code> placeholders for one path component.</td></tr>
+        <tr><td><code>url: "/exact/path"</code></td><td>Exact equality.</td></tr>
+        <tr><td><code>method: "GET"</code></td><td>Restrict to a verb (compared upper-case).</td></tr>
+        <tr><td><code>method: "*"</code></td><td>Any verb. Same as omitting it.</td></tr>
+      </tbody>
+    </table>
+
+    <p>Implementation: <code>src/match.js</code> — <code>compileRule()</code>
+    decides between <code>substring</code>, <code>regex</code>,
+    <code>exact</code>, or <code>any</code>.</p>
+
+    <h2>Worked examples shipped with the repo</h2>
+
+    <ul class="clean">
+      <li><code>configs/httpbin.json</code> — mock + recorder against httpbin.</li>
+      <li><code>configs/example-bucket.json</code> — bucket + mock + recorder, three collections, three id patterns.</li>
+      <li><code>configs/example-sqlite.json</code> — same idea but with SQLite storage.</li>
+    </ul>
+
+    <div class="footer">
+      Next: <a href="plugins.html">Plugins reference →</a>
+    </div>
+
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

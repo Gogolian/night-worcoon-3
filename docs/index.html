@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>night-worcoon-3 · Docs</title>
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand">night-worcoon-3</div>
+    <div class="tagline">TUI middleware proxy · docs</div>
+    <nav>
+      <h4>Get started</h4>
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <h4>Reference</h4>
+      <a href="configs.html">Configs</a>
+      <a href="plugins.html">Plugins</a>
+      <a href="storage.html">Storage</a>
+      <a href="tui.html">TUI</a>
+      <h4>Guides</h4>
+      <a href="extending.html">Write a plugin</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+
+    <div class="hero">
+      <h1>night-worcoon-3</h1>
+      <p>A small, hackable middleware proxy (HTTP + WebSocket) with a pluggable
+      pipeline, a built-in mock and recorder, and a terminal UI for picking
+      profiles at runtime.</p>
+    </div>
+
+    <div class="callout tldr">
+      <span class="label">TL;DR for the impatient</span>
+      It's a Node.js reverse proxy where each request flows through a chain
+      of plugins. Plugins can short-circuit with a fake response (mock),
+      replay an old recording, throttle traffic, or save real responses to
+      disk. You pick which plugins are active per <em>profile</em> (one JSON
+      file in <code>configs/</code>).
+    </div>
+
+    <h2>Quick start</h2>
+
+<pre><code>npm install
+npm start                                       # launch the TUI
+npm run start:headless -- --config httpbin.json # no TUI</code></pre>
+
+    <p>Then point your client at <code>http://localhost:&lt;port&gt;</code>
+    (the port comes from the chosen profile).</p>
+
+    <h2>What can I do with it?</h2>
+
+    <div class="cards">
+      <div class="card">
+        <h3>Mock APIs</h3>
+        <p>Return canned responses for chosen routes without touching the
+        upstream. Great for frontend dev when the backend is broken.</p>
+      </div>
+      <div class="card">
+        <h3>Record &amp; replay</h3>
+        <p>Capture real upstream traffic, then replay it offline. Filesystem
+        or SQLite backend.</p>
+      </div>
+      <div class="card">
+        <h3>CRUD bucket</h3>
+        <p>Pretend to be a REST API. Drop a config, get
+        <code>POST/GET/PATCH/PUT/DELETE</code> on any path with persistence.</p>
+      </div>
+      <div class="card">
+        <h3>Chaos test</h3>
+        <p>Inject latency and random 5xx failures to stress-test client retry
+        logic.</p>
+      </div>
+      <div class="card">
+        <h3>CORS layer</h3>
+        <p>Slap CORS headers on any upstream and short-circuit preflights —
+        even if the upstream doesn't.</p>
+      </div>
+      <div class="card">
+        <h3>WebSocket passthrough</h3>
+        <p><code>ws://</code> upgrades on the listening port get forwarded
+        to the target. (Plugin hooks don't see WS traffic yet.)</p>
+      </div>
+    </div>
+
+    <h2>Where to next?</h2>
+
+    <ul class="clean">
+      <li><a href="architecture.html">Architecture</a> — how a request flows through the system (1-minute read).</li>
+      <li><a href="configs.html">Configs</a> — every field a profile JSON can have.</li>
+      <li><a href="plugins.html">Plugins</a> — how the pipeline works + every built-in plugin.</li>
+      <li><a href="storage.html">Storage</a> — fs vs sqlite, the recording shape.</li>
+      <li><a href="tui.html">TUI</a> — keys, tabs, what each panel does.</li>
+      <li><a href="extending.html">Write a plugin</a> — copy-paste skeleton + <code>ctx</code> reference.</li>
+    </ul>
+
+    <h2>Project layout</h2>
+
+<pre><code>configs/        profile JSONs (one per proxy)
+plugins/        auto-loaded plugins (cors, latency, bucket, mock, recorder, your own)
+recordings/     default storage dir (gitignored)
+src/
+  index.js      entry — picks TUI or --headless
+  tui.js        blessed UI (Configs / Logs / Mocks / Plugins / Help tabs)
+  proxy.js      HTTP + WebSocket proxy + plugin pipeline runner
+  plugins.js    plugin loader (auto-discovers files in plugins/)
+  storage.js    filesystem + sqlite recording backends
+  match.js      URL/rule matching helpers (exact, substring, ":id" regex)
+  logger.js     EventEmitter-based logger
+docs/           you are here</code></pre>
+
+    <div class="callout tip">
+      <span class="label">For LLM agents updating this code</span>
+      Run <code>node docs/check-docs.mjs</code> to see if any source files
+      have changed since the docs were last refreshed. The output tells you
+      exactly which doc page(s) need attention. Then update the listed pages
+      and re-run the script with <code>--update</code> to refresh the
+      manifest. See <a href="../docs/README.md"><code>docs/README.md</code></a>.
+    </div>
+
+    <div class="footer">
+      Docs for night-worcoon-3 · MIT licensed ·
+      <a href="https://github.com/Gogolian/night-worcoon-3">source on GitHub</a>
+    </div>
+
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

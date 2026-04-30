@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Plugins · night-worcoon-3</title>
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand">night-worcoon-3</div>
+    <div class="tagline">TUI middleware proxy · docs</div>
+    <nav>
+      <h4>Get started</h4>
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <h4>Reference</h4>
+      <a href="configs.html">Configs</a>
+      <a href="plugins.html">Plugins</a>
+      <a href="storage.html">Storage</a>
+      <a href="tui.html">TUI</a>
+      <h4>Guides</h4>
+      <a href="extending.html">Write a plugin</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+
+    <h1>Plugins</h1>
+
+    <div class="callout tldr">
+      <span class="label">TL;DR</span>
+      Plugins are JS files in <code>plugins/</code> that hook into the request
+      pipeline. Each profile picks which ones to enable in its
+      <code>plugins</code> array. <code>onRequest</code> stops at the first
+      plugin that sets <code>ctx.response</code>; <code>onResponse</code>
+      always runs everything.
+    </div>
+
+    <h2>How plugins are loaded</h2>
+
+    <p>Implementation: <code>src/plugins.js</code> · <code>loadPlugins()</code>.</p>
+
+    <ol class="clean">
+      <li>List every <code>.js</code> file in <code>plugins/</code>.</li>
+      <li><code>import()</code> each one and grab its
+      <code>default</code> export. The export is either a plain object or a
+      factory function <code>({config, logger}) =&gt; plugin</code>.</li>
+      <li>Discard any plugin whose <code>name</code> isn't in
+      <code>config.plugins</code>.</li>
+      <li>Call <code>plugin.init({config, logger})</code> if defined.</li>
+      <li>Sort the kept plugins by their position in
+      <code>config.plugins</code>. <strong>That order is the pipeline order.</strong></li>
+    </ol>
+
+    <h2>The pipeline</h2>
+
+    <p>Implementation: <code>runOnRequest</code> / <code>runOnResponse</code>
+    in <code>src/plugins.js</code>, called from <code>src/proxy.js</code>.</p>
+
+    <pre><code>// onRequest: stops at first short-circuit
+for (const p of plugins) {
+  if (ctx.response) break;
+  if (p.onRequest) await p.onRequest(ctx);
+}
+
+// onResponse: always runs every plugin
+for (const p of plugins) {
+  if (p.onResponse) await p.onResponse(ctx);
+}</code></pre>
+
+    <div class="callout tip">
+      <span class="label">Mental model</span>
+      <code>onRequest</code> = "do I want to <em>answer this</em>?"<br>
+      <code>onResponse</code> = "now that we have an answer, do I want to
+      <em>watch / decorate</em> it?"
+    </div>
+
+    <h2>Built-in plugins</h2>
+
+    <table>
+      <thead><tr><th>Name</th><th>Purpose</th><th>Sets <code>ctx.meta.source</code> to</th></tr></thead>
+      <tbody>
+        <tr><td><a href="#cors"><code>cors</code></a></td>     <td>Add CORS headers + answer preflights.</td>     <td><code>cors</code> (preflight only)</td></tr>
+        <tr><td><a href="#latency"><code>latency</code></a></td><td>Inject delay + random failures.</td>          <td><code>latency_fail</code> (on inject)</td></tr>
+        <tr><td><a href="#bucket"><code>bucket</code></a></td>  <td>In-memory CRUD store, optional persistence.</td><td><code>bucket</code></td></tr>
+        <tr><td><a href="#mock"><code>mock</code></a></td>      <td>Rule-based mock / replay from recordings.</td> <td><code>mock</code> · <code>ret_rec</code> · <code>ret_rec_fallback</code></td></tr>
+        <tr><td><a href="#recorder"><code>recorder</code></a></td><td>Save real upstream responses.</td>          <td>— (only observes)</td></tr>
+      </tbody>
+    </table>
+
+    <p>Recommended ordering when using all of them:
+    <code>["cors", "latency", "bucket", "mock", "recorder"]</code>.</p>
+
+    <!-- ----- cors ----- -->
+
+    <h2 id="cors">cors</h2>
+    <p>Source: <code>plugins/cors.js</code></p>
+
+    <p>Adds <code>Access-Control-*</code> headers to every response and
+    short-circuits <code>OPTIONS</code> preflights with <code>204</code>.</p>
+
+<pre><code>"cors": {
+  "origin": "*",                                     // string | string[]
+  "methods": "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS",
+  "headers": "Content-Type,Authorization",
+  "exposeHeaders": "X-Request-Id",                   // optional
+  "credentials": false,
+  "maxAge": 600
+}</code></pre>
+
+    <ul class="clean">
+      <li><code>origin: "*"</code> + <code>credentials: false</code> → echoes <code>*</code>.</li>
+      <li><code>origin: "*"</code> + <code>credentials: true</code> → echoes the request <code>Origin</code> (because <code>*</code> is illegal with credentials).</li>
+      <li><code>origin</code> as an array → echoes the request origin if it's allowed; otherwise the first entry.</li>
+      <li>Any non-<code>*</code> or credentialed setup adds <code>Vary: Origin</code>.</li>
+    </ul>
+
+    <!-- ----- latency ----- -->
+
+    <h2 id="latency">latency</h2>
+    <p>Source: <code>plugins/latency.js</code></p>
+
+    <p>Adds artificial delay and an optional random failure rate. Per-route
+    rules override the global defaults; the first matching rule wins.</p>
+
+<pre><code>"latency": {
+  "delayMs": 500,                // base delay
+  "jitterMs": 200,               // + uniform random [0, jitter)
+  "failRate": 0.1,               // 0..1
+  "failStatus": 503,
+  "failBody": "upstream down",   // string → text/plain, object → application/json
+  "rules": [
+    { "urlContains": "/slow", "delayMs": 3000 },
+    { "method": "POST", "url": "/api/flaky", "failRate": 0.5 }
+  ]
+}</code></pre>
+
+    <div class="callout warn">
+      <span class="label">Where the delay applies</span>
+      Delay runs in <code>onRequest</code>, which means it happens
+      <strong>before</strong> mock/bucket can short-circuit. So mocked and
+      bucketed responses get throttled too. Failure injection short-circuits
+      with a synthetic response and sets <code>ctx.meta.source =
+      'latency_fail'</code>.
+    </div>
+
+    <!-- ----- bucket ----- -->
+
+    <h2 id="bucket">bucket</h2>
+    <p>Source: <code>plugins/bucket.js</code></p>
+
+    <p>A built-in mock data store with REST-ish CRUD semantics. Each
+    "collection" is a configured base path with an id pattern. Misses are
+    non-blocking — unmatched paths fall through to the next plugin.</p>
+
+<pre><code>"bucket": {
+  "persistPath": "./recordings/myproxy-bucket.json",  // omit for in-memory only
+  "collections": [
+    {
+      "path": "/api/users",
+      "idPattern": "numeric"
+    },
+    {
+      "path": "/api/sessions",
+      "idPattern": "uuid",
+      "responseTemplate": { "session": "{{id}}", "user": "{{user}}" }
+    },
+    {
+      "path": "/api/tokens",
+      "idPattern": "regex:[A-Z]{4}-\\d{4}"
+    }
+  ]
+}</code></pre>
+
+    <h3>Routes per collection</h3>
+
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill POST">POST</span></td>     <td><code>/coll</code></td>     <td>Create a resource. Auto-generate id, or honor <code>body.id</code> if it matches the pattern. <strong>201</strong>.</td></tr>
+        <tr><td><span class="pill GET">GET</span></td>       <td><code>/coll</code></td>     <td>List all resources. <strong>200</strong>.</td></tr>
+        <tr><td><span class="pill GET">GET</span></td>       <td><code>/coll/:id</code></td> <td>Fetch one. <strong>200</strong>, miss → fall through.</td></tr>
+        <tr><td><span class="pill PATCH">PATCH</span></td>   <td><code>/coll/:id</code></td> <td>Shallow merge. <strong>200</strong>, miss → fall through.</td></tr>
+        <tr><td><span class="pill PUT">PUT</span></td>       <td><code>/coll/:id</code></td> <td>Replace (id preserved). <strong>200</strong>, miss → fall through.</td></tr>
+        <tr><td><span class="pill DELETE">DELETE</span></td> <td><code>/coll/:id</code></td> <td>Remove. <strong>204</strong>, miss → fall through.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>idPattern values</h3>
+
+    <table>
+      <thead><tr><th>Value</th><th>Generates</th><th>Validates</th></tr></thead>
+      <tbody>
+        <tr><td><code>uuid</code></td>         <td><code>crypto.randomUUID()</code></td><td>Standard UUID regex.</td></tr>
+        <tr><td><code>numeric</code></td>      <td>Auto-increment counter</td>           <td><code>^\d+$</code>. Counter is rebuilt from persisted data on startup so ids are never reused.</td></tr>
+        <tr><td><code>alphanumeric</code></td> <td>8-char base64url-ish (A–Za–z0–9)</td><td><code>^[A-Za-z0-9]+$</code></td></tr>
+        <tr><td><code>regex:&lt;pat&gt;</code></td><td>Tries 5 random alphanumerics that match; falls back to hex.</td><td>Your regex.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>responseTemplate</h3>
+
+    <p>If set, the response body is the template with
+    <code>{{field}}</code> placeholders replaced by values from the stored
+    record. Dotted paths work (<code>{{user.name}}</code>). Missing values
+    become empty strings. Non-matching collections always return the raw
+    record.</p>
+
+    <h3>Persistence</h3>
+
+    <p>If <code>persistPath</code> is set, the whole state is rewritten to
+    that file (pretty-printed JSON) after every mutation. On startup, state
+    is reloaded and <code>numeric</code> counters are recomputed from the
+    largest existing id.</p>
+
+    <!-- ----- mock ----- -->
+
+    <h2 id="mock">mock</h2>
+    <p>Source: <code>plugins/mock.js</code></p>
+
+    <p>Walks <code>config.mock.rules</code> in order. The first rule whose
+    <code>method</code> + URL matcher accepts the request decides what
+    happens. If no rule matches, the request continues down the pipeline.</p>
+
+<pre><code>"mock": {
+  "rules": [
+    { "method": "GET", "url": "/users/:id", "action": "RET_REC", "fallback": "PASS" },
+    { "method": "POST", "url": "/login",    "action": "MOCK",
+      "response": { "status": 200, "headers": {...}, "body": {...} } },
+    { "method": "*", "urlContains": "/debug", "action": "PASS" }
+  ]
+}</code></pre>
+
+    <h3>Actions</h3>
+
+    <table>
+      <thead><tr><th>Action</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>PASS</code></td>
+          <td>Forward to the upstream — same as having no rule.</td>
+        </tr>
+        <tr>
+          <td><code>MOCK</code></td>
+          <td>Return the inline <code>response</code>. If <code>body</code>
+          is a non-Buffer object, it's <code>JSON.stringify</code>'d and
+          <code>content-type</code> defaults to <code>application/json</code>.
+          Sets <code>ctx.meta.source = 'mock'</code>.</td>
+        </tr>
+        <tr>
+          <td><code>RET_REC</code></td>
+          <td>Look up a recording with <code>storage.findBest()</code>.
+          Sets <code>ctx.meta.source = 'ret_rec'</code> on hit. On miss,
+          uses <code>fallback</code> (see below).</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>RET_REC matching</h3>
+
+    <ul class="clean">
+      <li>No query string on the request → return the <strong>newest</strong>
+      recording matching method + path.</li>
+      <li>Query string present → require <strong>exact</strong> method + path
+      + query match.</li>
+    </ul>
+
+    <h3>RET_REC fallback (on miss)</h3>
+
+    <table>
+      <thead><tr><th>Value</th><th>Behaviour</th></tr></thead>
+      <tbody>
+        <tr><td><code>"PASS"</code></td>     <td>Don't short-circuit; let the request go upstream.</td></tr>
+        <tr><td><code>"empty200"</code></td> <td>Return <code>200</code> with empty body.</td></tr>
+        <tr><td><code>"500"</code> (default)</td><td>Return <code>500</code> with a "no recording" message.</td></tr>
+    </tbody>
+    </table>
+
+    <!-- ----- recorder ----- -->
+
+    <h2 id="recorder">recorder</h2>
+    <p>Source: <code>plugins/recorder.js</code></p>
+
+    <p>Pure observer. Runs in <code>onResponse</code>. By default it only
+    saves responses where <code>ctx.meta.source === 'proxy'</code>, i.e. the
+    response actually came from the upstream. Set
+    <code>"recordAll": true</code> to also capture mocked / replayed /
+    bucketed responses.</p>
+
+<pre><code>"recorder": { "recordAll": false }</code></pre>
+
+    <p>Each saved entry has the shape documented in
+    <a href="storage.html">Storage → Recording shape</a>.</p>
+
+    <div class="footer">
+      Next: <a href="storage.html">Storage →</a> · or
+      <a href="extending.html">write your own plugin →</a>
+    </div>
+
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>
