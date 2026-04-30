@@ -63,7 +63,7 @@
                        │  1. createStorage()         │  ← src/storage.js
                        │  2. loadPlugins()           │  ← src/plugins.js
                        │  3. http.createServer(...)  │
-                       │  4. server.on('upgrade')    │  ← WS passthrough
+                        │  4. server.on('upgrade')    │  ← WS frame hooks
                        └─────────────────────────────┘
 </pre>
     </div>
@@ -160,9 +160,20 @@
     <h2>WebSockets</h2>
 
     <p>The HTTP server listens for <code>upgrade</code> events and hands them
-    to a separate <code>http-proxy</code> instance configured for
-    <code>ws: true</code>. <strong>Plugin hooks do not see WS traffic yet</strong>
-    — it's a straight passthrough to <code>config.target</code>.</p>
+    to <code>src/ws-proxy.js</code>. It performs the upstream WebSocket
+    handshake, parses text/binary frames, calls <code>runOnWsMessage()</code>,
+    then re-encodes frames for the correct peer. Plugins can set
+    <code>ctx.drop</code> to suppress a frame, mutate <code>ctx.frame.data</code>,
+    or push response frames into <code>ctx.inject</code>.</p>
+
+<pre><code>wsCtx = {
+  config, storage, logger,
+  ws: { connectionId, direction: 'client' | 'server', url, path, query, headers },
+  frame: { opcode, binary, data: Buffer, text: string | null },
+  drop: false,
+  inject: [],
+  meta: { source: 'proxy' | 'ws_tap_mock' | 'ws_tap_replay' | 'ws_tap_drop' }
+}</code></pre>
 
     <h2>Files at a glance</h2>
 
@@ -172,7 +183,8 @@
         <tr><td><code>src/index.js</code></td><td>argv parsing, TUI vs headless dispatch</td><td>~70</td></tr>
         <tr><td><code>src/tui.js</code></td><td>blessed UI (5 tabs, live logs, mock browser)</td><td>~1380</td></tr>
         <tr><td><code>src/proxy.js</code></td><td>HTTP server, manual forwarder, WS upgrade, pipeline runner</td><td>~200</td></tr>
-        <tr><td><code>src/plugins.js</code></td><td>plugin loader + <code>runOnRequest</code> / <code>runOnResponse</code></td><td>~75</td></tr>
+        <tr><td><code>src/ws-proxy.js</code></td><td>WebSocket handshake, frame parser, and <code>onWsMessage</code> bridge</td><td>~300</td></tr>
+        <tr><td><code>src/plugins.js</code></td><td>plugin loader + <code>runOnRequest</code> / <code>runOnResponse</code> / <code>runOnWsMessage</code></td><td>~85</td></tr>
         <tr><td><code>src/storage.js</code></td><td>fs + sqlite backends, recording shape, body encoding</td><td>~185</td></tr>
         <tr><td><code>src/match.js</code></td><td><code>compileRule</code> / <code>matchRule</code> / <code>splitPathQuery</code></td><td>~60</td></tr>
         <tr><td><code>src/logger.js</code></td><td>EventEmitter logger (info/warn/error/debug + trace)</td><td>~25</td></tr>
@@ -184,9 +196,10 @@
     <div class="diagram">
 <pre>
    index.js ─┬─▶ tui.js
-             └─▶ proxy.js ─┬─▶ plugins.js ─▶ plugins/*.js
-                           ├─▶ storage.js     │
-                           └─▶ match.js  ◀────┤
+             └─▶ proxy.js ─┬─▶ ws-proxy.js ─┬─▶ plugins.js ─▶ plugins/*.js
+                            ├─▶ plugins.js ◀─┤
+                            ├─▶ storage.js   │
+                            └─▶ match.js  ◀──┤
                                               │ (mock, latency import match)
                                               │ (mock, recorder import storage)
    logger.js  ◀── everywhere

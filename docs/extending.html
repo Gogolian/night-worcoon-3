@@ -34,7 +34,8 @@
       <span class="label">TL;DR</span>
       Drop a file in <code>plugins/</code> that <code>export default</code>s
       either an object or a factory. Set <code>name</code>, optionally
-      implement <code>onRequest</code> / <code>onResponse</code> / <code>init</code>,
+      implement <code>onRequest</code> / <code>onResponse</code> /
+      <code>onWsMessage</code> / <code>init</code>,
       then add the name to your config's <code>plugins</code> array.
     </div>
 
@@ -75,6 +76,12 @@ export default function create({ config, logger }) {
       if (ctx.response &amp;&amp; ctx.response.headers) {
         ctx.response.headers['x-served-by'] = 'my-plugin';
       }
+    },
+
+    async onWsMessage(ctx) {
+      // Runs for every WebSocket text/binary frame.
+      // Set ctx.drop=true to suppress it, mutate ctx.frame.data to rewrite it,
+      // or push {body, binary?} entries into ctx.inject to synthesize replies.
     },
   };
 }</code></pre>
@@ -123,7 +130,7 @@ export default {
              startedAt: number },
 }</code></pre>
 
-    <h2>The two hooks</h2>
+    <h2>The hooks</h2>
 
     <h3><code>onRequest(ctx)</code></h3>
 
@@ -132,6 +139,28 @@ export default {
       <li>The pipeline stops at the first plugin that sets <code>ctx.response</code> to a truthy value.</li>
       <li>If you don't want to short-circuit, just leave <code>ctx.response</code> alone.</li>
     </ul>
+
+    <h3><code>onWsMessage(ctx)</code></h3>
+
+    <p>Runs for each parsed WebSocket text/binary frame. Reference:</p>
+
+<pre><code>ctx = {
+  config, storage, logger,
+  ws: {
+    connectionId,
+    direction,  // 'client' for client → upstream, 'server' for upstream → client
+    url, path, query, headers,
+  },
+  frame: {
+    opcode,
+    binary,
+    data,       // Buffer
+    text,       // string for text frames, null for binary
+  },
+  drop: false,  // set true to suppress the frame
+  inject: [],   // push { body, binary? } to synthesize a frame to the opposite peer
+  meta: { source: 'proxy' | &lt;your tag&gt; },
+}</code></pre>
 
     <h3><code>onResponse(ctx)</code></h3>
 
@@ -166,6 +195,10 @@ export default {
         <tr>
           <td>Read a recording for replay</td>
           <td><code>plugins/mock.js</code> (action <code>RET_REC</code>) — <code>ctx.storage.findBest({method, path, query})</code> then <code>decodeBody()</code>.</td>
+        </tr>
+        <tr>
+          <td>Inspect/mock/replay WebSocket frames</td>
+          <td><code>plugins/ws-tap.js</code> — implements <code>onWsMessage</code>, sets <code>ctx.drop</code>, appends to <code>ctx.inject</code>, and records sessions under <code>recordPath</code>.</td>
         </tr>
         <tr>
           <td>Decorate every response in <code>onResponse</code></td>
@@ -210,11 +243,10 @@ import { buildRecord, decodeBody } from '../src/storage.js';</code></pre>
       subfolder, or in <code>src/</code>.
     </div>
 
-    <div class="callout danger">
-      <span class="label">No WebSocket hooks (yet)</span>
-      <code>ws://</code> upgrades bypass the plugin pipeline entirely.
-      If you need to intercept WS frames, you'll have to extend
-      <code>src/proxy.js</code> directly.
+    <div class="callout warn">
+      <span class="label">WebSocket framing</span>
+      <code>onWsMessage</code> sees complete text/binary frames. Control frames
+      (ping/pong/close) pass through without plugin hooks.
     </div>
 
     <h2>Testing your plugin</h2>

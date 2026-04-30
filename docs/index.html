@@ -87,9 +87,9 @@ npm run start:headless -- --config httpbin.json # no TUI</code></pre>
         even if the upstream doesn't.</p>
       </div>
       <div class="card">
-        <h3>WebSocket passthrough</h3>
-        <p><code>ws://</code> upgrades on the listening port get forwarded
-        to the target. (Plugin hooks don't see WS traffic yet.)</p>
+        <h3>WebSocket tap</h3>
+        <p><code>ws://</code> upgrades are forwarded to the target, and
+        <code>ws-tap</code> can log, mock, record, and replay message frames.</p>
       </div>
     </div>
 
@@ -107,12 +107,13 @@ npm run start:headless -- --config httpbin.json # no TUI</code></pre>
     <h2>Project layout</h2>
 
 <pre><code>configs/        profile JSONs (one per proxy)
-plugins/        auto-loaded plugins (cors, latency, bucket, mock, recorder, tap, your own)
+plugins/        auto-loaded plugins (cors, latency, bucket, mock, recorder, tap, ws-tap, your own)
 recordings/     default storage dir (gitignored)
 src/
   index.js      entry — picks TUI or --headless
   tui.js        blessed UI (Configs / Logs / Mocks / Plugins / plugin / Help tabs)
   proxy.js      HTTP + WebSocket proxy + plugin pipeline runner
+  ws-proxy.js   WebSocket handshake, frame parser, and onWsMessage bridge
   plugins.js    plugin loader (auto-discovers files in plugins/)
   storage.js    filesystem + sqlite recording backends
   match.js      URL/rule matching helpers (exact, substring, ":id" regex)

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "description": "Tracks which source files each HTML doc page covers, plus a SHA-256 fingerprint of each source at the time the docs were last refreshed. Run `node docs/check-docs.mjs` to detect drift, then `--update` to refresh hashes after editing the affected pages.",
-  "generatedAt": "2026-04-30T20:55:35.033Z",
+  "generatedAt": "2026-04-30T20:59:13.869Z",
   "docs": {
     "docs/index.html": "Overview, quick start, project layout.",
     "docs/architecture.html": "Big picture, request lifecycle, ctx shape, module map.",
@@ -31,8 +31,8 @@
       "summary": "Blessed-based UI. Tabs: Configs / Logs / Mocks / Plugins / Help. Global keys for tab nav, start/stop, quit, reload."
     },
     "src/proxy.js": {
-      "sha256": "36fd30eddfe0e81ce42004a021e5c919b959d7b69d6be8fde1688625301e271c",
-      "lines": 203,
+      "sha256": "cfe372a1db3bf25018c598b7ee5d18e6ad3d9d597a572d01f0e499f8fcff5c75",
+      "lines": 195,
       "covers": [
         "docs/architecture.html",
         "docs/extending.html"
@@ -40,8 +40,8 @@
       "summary": "startProxy(): builds storage, loads plugins, runs HTTP server with onRequest/onResponse pipeline, manual forwarder with redirect support, WS upgrade passthrough via http-proxy."
     },
     "src/plugins.js": {
-      "sha256": "6222f2091d43abd3ad36bda48b2a38ce402d264422ca8334ebbbb8921d22e701",
-      "lines": 74,
+      "sha256": "043b516053aec870d6848d255c142bd7115d703679d1a61244d332bb0368cf93",
+      "lines": 83,
       "covers": [
         "docs/plugins.html",
         "docs/extending.html",
@@ -148,20 +148,29 @@
       "summary": "Example: same as httpbin.json but with sqlite storage."
     },
     "package.json": {
-      "sha256": "1b525b17fb47782c458d03fa8b6cb858613fec2b0e19b10992b5358e8f41ae9c",
-      "lines": 25,
+      "sha256": "6489ecc197c700216b1c87b36d813b86926885d4c832998a7c02515e1a235525",
+      "lines": 24,
       "covers": [
         "docs/index.html"
       ],
-      "summary": "Scripts (start, start:headless), deps (blessed, http-proxy), optional dep (better-sqlite3), Node >=18."
+      "summary": "Scripts (start, start:headless), deps (blessed), optional dep (better-sqlite3), Node >=18."
     },
     "README.md": {
-      "sha256": "2c8797b862605535d50eb89838e29a48fa11e1cb5290fd237ab9a77424890dcb",
-      "lines": 351,
+      "sha256": "4217380b683ab03157626b8ea50ff7aeefbb646f775c1d2224a4fe2e3fb61f15",
+      "lines": 356,
       "covers": [
         "docs/index.html"
       ],
       "summary": "Top-level README mirroring most of the docs at a higher level. If this changes, the Overview page may need a touch-up."
+    },
+    "src/ws-proxy.js": {
+      "sha256": "dcc1d6a176d869c7dd0fb5eb012cb7dfe7c3aeb76fc4f0af66cba4f881bb99d6",
+      "lines": 292,
+      "covers": [
+        "docs/architecture.html",
+        "docs/extending.html"
+      ],
+      "summary": "Handles WebSocket upstream handshakes, parses/re-encodes frames, and bridges text/binary messages into runOnWsMessage()."
     },
     "plugins/tap.js": {
       "sha256": "954f20956d38c53c65aa8b97bff31f3cedb937e68331d04b22fd6f761496c561",
@@ -181,6 +190,16 @@
         "docs/plugins.html"
       ],
       "summary": "Plugin TUI tab for live request/response inspection with URL/status filters, pause/resume, clear, details, and copy-as-cURL via OSC 52."
+    },
+    "plugins/ws-tap.js": {
+      "sha256": "93c4f383bdf06e074260841772ea6d0ee2a62992d643a243c0a99ea89e7a0844",
+      "lines": 180,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html",
+        "docs/extending.html"
+      ],
+      "summary": "Built-in WebSocket tap plugin. Logs frames, records sessions to JSON, and supports PASS/DROP/MOCK/REPLAY rules."
     }
   }
 }

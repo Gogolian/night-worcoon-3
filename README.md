@@ -44,7 +44,7 @@ Building against a flaky third-party API? Need to replay yesterday's traffic? Wa
 - 🔎 **Tap inspector** — live request/response TUI tab with filters and copy-as-cURL.
 - 🐢 **Chaos / latency** — inject delays, jitter, and random failures globally or per-rule.
 - 🌐 **CORS plugin** — preflight handling and response augmentation out of the box.
-- 🔌 **WebSocket pass-through** — `ws://` upgrades are forwarded transparently.
+- 🔌 **WebSocket tap** — per-frame hooks with logging, rule-based mocks, and session record/replay.
 - 💾 **Pluggable storage** — filesystem JSON or SQLite (optional dep).
 - 📦 **Zero scaffolding** — drop a JSON in `configs/`, drop a `.js` in `plugins/`, done.
 
@@ -116,7 +116,7 @@ Each file in `configs/` is one proxy profile. The full shape:
   "followRedirects": false,
 
   // pipeline order; only listed plugins run
-  "plugins": ["cors", "latency", "bucket", "mock", "recorder", "tap"],
+  "plugins": ["cors", "latency", "bucket", "mock", "recorder", "tap", "ws-tap"],
 
   // recording backend (used by `recorder` and `RET_REC`)
   "storage": { "type": "fs",     "path": "./recordings/httpbin" },
@@ -126,7 +126,8 @@ Each file in `configs/` is one proxy profile. The full shape:
   "bucket":   { /* see below */ },
   "recorder": { "recordAll": false },
   "latency":  { /* see below */ },
-  "cors":     { /* see below */ }
+  "cors":     { /* see below */ },
+  "wsTap":    { /* see below */ }
 }
 ```
 
@@ -306,10 +307,31 @@ ctx = {
 | `tap`      | live request/response inspector in the TUI                  |
 | `latency`  | inject delay + random failures (chaos testing)              |
 | `cors`     | add CORS headers + handle `OPTIONS` preflight               |
+| `ws-tap`   | inspect, mock, record, and replay WebSocket frames           |
 
 ## 🔌 WebSocket
 
-`ws://` upgrades on the listening port are forwarded to `target` using [`http-proxy`](https://github.com/http-party/node-http-proxy). Plugin hooks don't see WS traffic yet (planned — see [Roadmap](#-roadmap)).
+`ws://` upgrades on the listening port are forwarded to `target` and message
+frames can flow through the plugin pipeline via the built-in `ws-tap` plugin.
+Enable it with `"plugins": ["ws-tap"]` and configure `wsTap`:
+
+```jsonc
+"wsTap": {
+  "log": true,
+  "record": true,
+  "recordPath": "./recordings/httpbin-ws",
+  "rules": [
+    { "url": "/socket", "direction": "client", "textContains": "ping",
+      "action": "MOCK", "response": "pong" },
+    { "url": "/socket", "direction": "client", "action": "REPLAY",
+      "fallback": "PASS" }
+  ]
+}
+```
+
+`ws-tap` calls `onWsMessage(ctx)` for every text/binary frame. Rules support
+`PASS`, `DROP`, `MOCK`, and `REPLAY`/`RET_REC`; mocked client frames are dropped
+by default and their configured response is injected back to the client.
 
 ## 🗂 Project layout
 
@@ -329,7 +351,7 @@ src/
 
 ## 🗺 Roadmap
 
-- [ ] Plugin hooks for WebSocket frames (record / mock / replay)
+- [x] Plugin hooks for WebSocket frames (record / mock / replay)
 - [ ] HTTPS upstream cert pinning options
 - [ ] Live request log pane in the TUI
 - [ ] Hot-reload of running proxies on config change
