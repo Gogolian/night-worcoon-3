@@ -122,7 +122,7 @@
       "summary": "onResponse only. By default skips non-'proxy' sources; recordAll:true also captures mock/bucket/etc. Calls buildRecord then storage.save."
     },
     "configs/httpbin.json": {
-      "sha256": "8869041dfd870d0e2a74cfea5c4eb32eebbcf9ae2ab088a04b76c64fe24cc289",
+      "sha256": "6626fb1eba63237d701892b5a08686b9d018255e4214f68807c2aa15d4f5a529",
       "lines": 39,
       "covers": [
         "docs/configs.html"
@@ -171,6 +171,25 @@
         "docs/extending.html"
       ],
       "summary": "Handles WebSocket upstream handshakes, parses/re-encodes frames, and bridges text/binary messages into runOnWsMessage()."
+    },
+    "plugins/tap.js": {
+      "sha256": "954f20956d38c53c65aa8b97bff31f3cedb937e68331d04b22fd6f761496c561",
+      "lines": 66,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html",
+        "docs/tui.html"
+      ],
+      "summary": "onResponse observer that emits tap trace events with method, status, latency, response size, source, headers, and copy-as-cURL command."
+    },
+    "plugins/tap.tui.js": {
+      "sha256": "b2b49ceec37330fe286c72afce42358024cf40a482720ada44718c1f74aad566",
+      "lines": 332,
+      "covers": [
+        "docs/tui.html",
+        "docs/plugins.html"
+      ],
+      "summary": "Plugin TUI tab for live request/response inspection with URL/status filters, pause/resume, clear, details, and copy-as-cURL via OSC 52."
     },
     "plugins/ws-tap.js": {
       "sha256": "93c4f383bdf06e074260841772ea6d0ee2a62992d643a243c0a99ea89e7a0844",

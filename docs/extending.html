@@ -125,8 +125,9 @@ export default {
 
   response: null | { status, headers, body },   // set to short-circuit
   meta:    { source: null | 'proxy' | 'mock' | 'ret_rec'
-                          | 'ret_rec_fallback' | 'bucket' | 'cors'
-                          | 'latency_fail' | &lt;your tag&gt; },
+                           | 'ret_rec_fallback' | 'bucket' | 'cors'
+                           | 'latency_fail' | &lt;your tag&gt;,
+             startedAt: number },
 }</code></pre>
 
     <h2>The hooks</h2>
@@ -168,6 +169,8 @@ export default {
       <li><strong>Every</strong> enabled plugin's <code>onResponse</code> runs, in pipeline order. There is no short-circuit here.</li>
       <li>Look at <code>ctx.meta.source</code> to decide whether you care
       (e.g. recorder skips non-<code>'proxy'</code> sources by default).</li>
+      <li>Use <code>ctx.meta.startedAt</code> if an observer needs end-to-end
+      request latency.</li>
       <li>Mutate <code>ctx.response.headers</code> / <code>body</code> /
       <code>status</code> in place — your changes are what the client sees.</li>
     </ul>

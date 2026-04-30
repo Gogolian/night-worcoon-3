@@ -33,9 +33,10 @@
     <div class="callout tldr">
       <span class="label">TL;DR</span>
       Run <code>npm start</code> and you get a terminal UI built on
-      <a href="https://github.com/chjj/blessed">blessed</a> with five tabs:
-      Configs, Logs, Mocks, Plugins, Help. The proxy itself runs in the same
-      Node process; the TUI just controls it.
+      <a href="https://github.com/chjj/blessed">blessed</a> with the core tabs
+      Configs, Logs, Mocks, Plugins, Help plus any enabled plugin tabs such as
+      Tap or Bucket. The proxy itself runs in the same Node process; the TUI
+      just controls it.
     </div>
 
     <h2>Launching</h2>
@@ -65,6 +66,12 @@ npm run start:headless -- --config httpbin.json # no TUI, just the proxy</code><
       <div class="card">
         <h3>Plugins</h3>
         <p>Toggle plugins on/off for the active profile and reorder them.</p>
+      </div>
+      <div class="card">
+        <h3>Tap</h3>
+        <p>When the <code>tap</code> plugin is enabled, inspect live HTTP
+        transactions, filter by URL/status, pause the stream, and copy the
+        selected request as cURL.</p>
       </div>
       <div class="card">
         <h3>Help</h3>
@@ -98,7 +105,7 @@ npm run start:headless -- --config httpbin.json # no TUI, just the proxy</code><
   ┌──────────────────────────────────────────────────────────────┐
   │  night-worcoon-3 · middleware proxy                          │  ← title bar
   ├──────────────────────────────────────────────────────────────┤
-  │  Configs   Logs   Mocks   Plugins   Help                     │  ← tab bar
+  │  Configs   Logs   Mocks   Plugins   Tap   Help               │  ← tab bar
   ├──────────────────────────────────────────────────────────────┤
   │                                                              │
   │             active tab content (one box per tab)             │
