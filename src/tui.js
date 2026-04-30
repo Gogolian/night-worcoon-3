@@ -1515,6 +1515,11 @@ export async function createTui({ configsDir, pluginsDir, logger, onStart, onSto
     promptChoice,
     popupBox,
     pushPopup: () => { popupCount += 1; },
+    // Mirrors `deferReleasePopup` above: decrement on next tick so any
+    // trailing Enter that submitted the popup does not propagate to the
+    // screen-level handler and trigger an action in the underlying view.
+    // The Math.max(0, …) guard means rapid open/close cannot drive
+    // popupCount negative.
     popPopup: () => { setImmediate(() => { popupCount = Math.max(0, popupCount - 1); }); },
     leaveContentFocus: () => {
       focusZone = 'tabs';

@@ -611,7 +611,7 @@ export default {
       if (!cfg) return;
       cfg.bucket ||= {};
       const suggested = cfg.bucket.persistPath
-        || `./recordings/${(cfg.name || 'bucket').replace(/\s+/g, '-')}-bucket.json`;
+        ?? `./recordings/${(cfg.name ?? 'bucket').replace(/\s+/g, '-')}-bucket.json`;
       const v = await promptValue({
         label: 'bucket.persistPath (relative to project root)',
         initial: suggested,
