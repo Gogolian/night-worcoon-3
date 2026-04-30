@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "description": "Tracks which source files each HTML doc page covers, plus a SHA-256 fingerprint of each source at the time the docs were last refreshed. Run `node docs/check-docs.mjs` to detect drift, then `--update` to refresh hashes after editing the affected pages.",
-  "generatedAt": "2026-04-30T20:18:21.989Z",
+  "generatedAt": "2026-04-30T20:55:35.033Z",
   "docs": {
     "docs/index.html": "Overview, quick start, project layout.",
     "docs/architecture.html": "Big picture, request lifecycle, ctx shape, module map.",
@@ -13,8 +13,8 @@
   },
   "sources": {
     "src/index.js": {
-      "sha256": "3c646a56ff8c09404eb11622defd875326aa3d89c5b20e5529d373a068cbceec",
-      "lines": 73,
+      "sha256": "9c49ba3f852b2352541757b3e2f8a91e9ac62385c86d29fd3104e000d13a8685",
+      "lines": 76,
       "covers": [
         "docs/architecture.html",
         "docs/tui.html",
@@ -23,16 +23,16 @@
       "summary": "Entry point. Parses argv (--headless, --config), wires logger to stdout in headless mode, otherwise creates the TUI."
     },
     "src/tui.js": {
-      "sha256": "23dc34dae11c484e686f7a9b1d393b68a800fd622788ad8db4ae6b662042af8c",
-      "lines": 1383,
+      "sha256": "8a20fa358745ca8c0382a5b66c03133033374df1e4939183cda75f67a512a56c",
+      "lines": 2225,
       "covers": [
         "docs/tui.html"
       ],
       "summary": "Blessed-based UI. Tabs: Configs / Logs / Mocks / Plugins / Help. Global keys for tab nav, start/stop, quit, reload."
     },
     "src/proxy.js": {
-      "sha256": "6d87cc6f38dbf9c02a2de5bfeb24197c5addf13a97a408d152b1c04ce90b1249",
-      "lines": 201,
+      "sha256": "36fd30eddfe0e81ce42004a021e5c919b959d7b69d6be8fde1688625301e271c",
+      "lines": 203,
       "covers": [
         "docs/architecture.html",
         "docs/extending.html"
@@ -40,7 +40,7 @@
       "summary": "startProxy(): builds storage, loads plugins, runs HTTP server with onRequest/onResponse pipeline, manual forwarder with redirect support, WS upgrade passthrough via http-proxy."
     },
     "src/plugins.js": {
-      "sha256": "2a32c7f18aa5c4ee9a837f436819c498bd3f8855dc535f4410c57116093e0a00",
+      "sha256": "6222f2091d43abd3ad36bda48b2a38ce402d264422ca8334ebbbb8921d22e701",
       "lines": 74,
       "covers": [
         "docs/plugins.html",
@@ -50,8 +50,8 @@
       "summary": "loadPlugins() (auto-discovers plugins/*.js, instantiates from object or factory, sorts by config.plugins order, calls init); runOnRequest stops at first short-circuit; runOnResponse always runs all."
     },
     "src/storage.js": {
-      "sha256": "da934aa803fd1f0f5c2c672c36052f871b905980e98032a39a6f8d06b1d63ed6",
-      "lines": 184,
+      "sha256": "d14d2c49017a3f9c9beccae12824f8f2b9ac5cd2c39a24139c2740a051d543dc",
+      "lines": 186,
       "covers": [
         "docs/storage.html"
       ],
@@ -94,8 +94,8 @@
       "summary": "onRequest: sleeps delayMs+random*jitterMs, then with failRate probability sets a synthetic failStatus response. Per-rule overrides via compileRule/matchRule."
     },
     "plugins/bucket.js": {
-      "sha256": "9f2be2f9f1f7efae28a8467b12a092cbf31e77051e437c215ae658304c639220",
-      "lines": 272,
+      "sha256": "4b44d9766061c46b9245c275d4d57ba81c435004e890fcb47ae5d800bed2584f",
+      "lines": 285,
       "covers": [
         "docs/plugins.html",
         "docs/configs.html"
@@ -122,7 +122,7 @@
       "summary": "onResponse only. By default skips non-'proxy' sources; recordAll:true also captures mock/bucket/etc. Calls buildRecord then storage.save."
     },
     "configs/httpbin.json": {
-      "sha256": "8869041dfd870d0e2a74cfea5c4eb32eebbcf9ae2ab088a04b76c64fe24cc289",
+      "sha256": "6626fb1eba63237d701892b5a08686b9d018255e4214f68807c2aa15d4f5a529",
       "lines": 39,
       "covers": [
         "docs/configs.html"
@@ -156,12 +156,31 @@
       "summary": "Scripts (start, start:headless), deps (blessed, http-proxy), optional dep (better-sqlite3), Node >=18."
     },
     "README.md": {
-      "sha256": "647834a433184f8c82abde29141e781883189b1e55f83571628b8ae703e4e8af",
-      "lines": 220,
+      "sha256": "2c8797b862605535d50eb89838e29a48fa11e1cb5290fd237ab9a77424890dcb",
+      "lines": 351,
       "covers": [
         "docs/index.html"
       ],
       "summary": "Top-level README mirroring most of the docs at a higher level. If this changes, the Overview page may need a touch-up."
+    },
+    "plugins/tap.js": {
+      "sha256": "954f20956d38c53c65aa8b97bff31f3cedb937e68331d04b22fd6f761496c561",
+      "lines": 66,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html",
+        "docs/tui.html"
+      ],
+      "summary": "onResponse observer that emits tap trace events with method, status, latency, response size, source, headers, and copy-as-cURL command."
+    },
+    "plugins/tap.tui.js": {
+      "sha256": "b2b49ceec37330fe286c72afce42358024cf40a482720ada44718c1f74aad566",
+      "lines": 332,
+      "covers": [
+        "docs/tui.html",
+        "docs/plugins.html"
+      ],
+      "summary": "Plugin TUI tab for live request/response inspection with URL/status filters, pause/resume, clear, details, and copy-as-cURL via OSC 52."
     }
   }
 }
