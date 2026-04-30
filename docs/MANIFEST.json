@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "description": "Tracks which source files each HTML doc page covers, plus a SHA-256 fingerprint of each source at the time the docs were last refreshed. Run `node docs/check-docs.mjs` to detect drift, then `--update` to refresh hashes after editing the affected pages.",
-  "generatedAt": "2026-04-30T20:59:13.869Z",
+  "generatedAt": "2026-04-30T21:27:19.710Z",
   "docs": {
     "docs/index.html": "Overview, quick start, project layout.",
     "docs/architecture.html": "Big picture, request lifecycle, ctx shape, module map.",
@@ -31,7 +31,7 @@
       "summary": "Blessed-based UI. Tabs: Configs / Logs / Mocks / Plugins / Help. Global keys for tab nav, start/stop, quit, reload."
     },
     "src/proxy.js": {
-      "sha256": "cfe372a1db3bf25018c598b7ee5d18e6ad3d9d597a572d01f0e499f8fcff5c75",
+      "sha256": "779c04ac5d6ae27c8b834e077d86d3e887c4bd1086c0b621ef8a861a6cff2aa0",
       "lines": 195,
       "covers": [
         "docs/architecture.html",
@@ -156,8 +156,8 @@
       "summary": "Scripts (start, start:headless), deps (blessed), optional dep (better-sqlite3), Node >=18."
     },
     "README.md": {
-      "sha256": "4217380b683ab03157626b8ea50ff7aeefbb646f775c1d2224a4fe2e3fb61f15",
-      "lines": 356,
+      "sha256": "e9fd8849555b88fa0f1db3c1fa768a0b76405d0d86cea5027a408c541b586450",
+      "lines": 373,
       "covers": [
         "docs/index.html"
       ],
@@ -200,6 +200,32 @@
         "docs/extending.html"
       ],
       "summary": "Built-in WebSocket tap plugin. Logs frames, records sessions to JSON, and supports PASS/DROP/MOCK/REPLAY rules."
+    },
+    "plugins/har-export.js": {
+      "sha256": "8e5c52d7c9f66e24c8b2694b157839c147be45f934c07445e3295bd83c58a167",
+      "lines": 275,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html"
+      ],
+      "summary": "har-export plugin. Accumulates HTTP traffic as HAR 1.2 entries, serves GET /_har/export / POST /_har/save / POST /_har/reset control endpoints, emits logger trace events for the TUI tab."
+    },
+    "plugins/har-export.tui.js": {
+      "sha256": "63c99372ea5de49ade9fc4daec3ff6dfaf47b5dcb893e1807fc32b6adb3decb8",
+      "lines": 327,
+      "covers": [
+        "docs/plugins.html",
+        "docs/tui.html"
+      ],
+      "summary": "HAR TUI tab. Shows live captured entries (method, status, latency, size, source, URL). Keys: e=export HAR, x=clear, p=pause/resume, ↑/↓ navigate."
+    },
+    "configs/example-har-export.json": {
+      "sha256": "751f1f141bc3810907cb014953ae48de80f3e48867cc8a0bebc9f82639e875eb",
+      "lines": 14,
+      "covers": [
+        "docs/configs.html"
+      ],
+      "summary": "Example: har-export + tap against httpbin.org with HTTP control endpoints enabled."
     }
   }
 }
