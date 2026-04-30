@@ -48,7 +48,7 @@ async function runHeadless() {
 }
 
 async function runTui() {
-  createTui({
+  await createTui({
     configsDir,
     pluginsDir,
     logger,

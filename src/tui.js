@@ -1,6 +1,7 @@
 import blessed from 'blessed';
 import fs from 'node:fs';
 import path from 'node:path';
+import url from 'node:url';
 
 // ---------- small helpers ----------
 function fmtTs(d) {
@@ -26,7 +27,7 @@ function prettyValue(v) {
 }
 
 // ---------- main ----------
-export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
+export async function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   const screen = blessed.screen({
     smartCSR: true,
     title: 'night-worcoon-3',
@@ -42,7 +43,15 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   });
 
   // ---------- tab bar ----------
-  const TABS = ['Configs', 'Logs', 'Mocks', 'Plugins', 'Help'];
+  // Static tabs are always present. Plugin-contributed tabs are inserted
+  // between "Plugins" and "Help" and become visible only while the plugin
+  // they belong to is enabled in the currently-selected config.
+  const STATIC_LEFT_TABS = ['Configs', 'Logs', 'Mocks', 'Plugins'];
+  const STATIC_RIGHT_TABS = ['Help'];
+  // Filled in after plugin TUI extensions are loaded below.
+  /** @type {Array<{tabName:string, instance:any, page:any}>} */
+  const pluginTabs = [];
+  let TABS = [...STATIC_LEFT_TABS, ...STATIC_RIGHT_TABS];
   let tabIdx = 0;
   let focusZone = 'tabs'; // 'tabs' | 'content'
 
@@ -76,6 +85,16 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   const pages = {};
   for (const name of TABS) {
     pages[name] = blessed.box({
+      parent: screen,
+      top: contentTop, left: 0, right: 0, bottom: contentBottom,
+      hidden: true,
+    });
+  }
+
+  // Helper to build a page for plugin tabs (called later, after pluginTabs
+  // are discovered). Plugin pages sit in the same content rectangle.
+  function createPluginPage() {
+    return blessed.box({
       parent: screen,
       top: contentTop, left: 0, right: 0, bottom: contentBottom,
       hidden: true,
@@ -280,6 +299,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
     });
     optionsList.setItems(items);
     if ((optionsList.selected || 0) >= items.length) optionsList.select(Math.max(0, items.length - 1));
+    recomputeTabs();
     screen.render();
   }
 
@@ -354,7 +374,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   function renderPlugins() {
     let files = [];
     try {
-      files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js'));
+      files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js') && !f.endsWith('.tui.js'));
     } catch {}
     const entry = currentConfig();
     const enabled = new Set(entry?.config?.plugins || []);
@@ -430,6 +450,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       ' Logs     - live request, response, and proxy events.',
       ' Mocks    - mock rules for the selected profile.',
       ' Plugins  - available plugins and which ones are enabled.',
+      ' <plugin> - some plugins (e.g. Bucket) install their own tab when',
+      '            enabled in the selected config — go there to inspect',
+      '            and edit the plugin\'s data and settings.',
       ' Help     - this reference page.',
       '',
       '{bold}Terminal color legend{/bold}',
@@ -467,17 +490,37 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
 
     helpBox.setLabel(activeContentTab === 'Help' ? ' [ help ] ' : ' help ');
     helpBox.style.border.fg = activeContentTab === 'Help' ? 'white' : 'cyan';
+
+    // Let plugin tabs refresh their own border highlighting.
+    for (const t of pluginTabs) {
+      try { t.instance.renderFrames?.(activeContentTab === t.tabName); } catch {}
+    }
   }
 
   // =====================================================
   //                   TAB SWITCHING
   // =====================================================
+  let lastShownTab = null;
+
   function showTab(idx) {
     tabIdx = ((idx % TABS.length) + TABS.length) % TABS.length;
-    for (const name of TABS) pages[name].hide();
-    pages[TABS[tabIdx]].show();
-    if (TABS[tabIdx] === 'Mocks') renderMocks();
-    if (TABS[tabIdx] === 'Plugins') renderPlugins();
+    const name = TABS[tabIdx];
+
+    // Notify plugin tabs leaving / entering.
+    if (lastShownTab && lastShownTab !== name) {
+      const prev = pluginTabs.find((t) => t.tabName === lastShownTab);
+      if (prev) { try { prev.instance.onHide?.(); } catch {} }
+    }
+
+    for (const tn of TABS) pages[tn]?.hide();
+    pages[name].show();
+    if (name === 'Mocks') renderMocks();
+    if (name === 'Plugins') renderPlugins();
+
+    const cur = pluginTabs.find((t) => t.tabName === name);
+    if (cur) { try { cur.instance.onShow?.(currentConfig()); } catch (e) { logger.warn(`[plugin tab ${name}] onShow failed: ${e.message}`); } }
+
+    lastShownTab = name;
     updateHelp();
     renderTabBar();
   }
@@ -504,6 +547,15 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       setHelp('[↑/↓] browse   [↑@top → tabs]   [q] quit');
     } else if (tab === 'Help') {
       setHelp('[↑/↓] scroll   [↑@top → tabs]   [q] quit');
+    } else {
+      // Plugin-contributed tab.
+      const pt = pluginTabs.find((t) => t.tabName === tab);
+      if (pt && typeof pt.instance.help === 'function') {
+        try { setHelp(pt.instance.help()); }
+        catch { setHelp('[↑@top → tabs]   [q] quit'); }
+      } else {
+        setHelp('[↑@top → tabs]   [q] quit');
+      }
     }
   }
 
@@ -520,6 +572,25 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   let pluginsEditorOpen = false;
   function navActive() { return popupCount === 0; }
 
+  // Helper: is the active tab a plugin tab?
+  function activePluginTab() {
+    return pluginTabs.find((t) => t.tabName === TABS[tabIdx]) || null;
+  }
+
+  // Helper: plugin tab key dispatch.
+  // Returns true if the plugin consumed the key, false otherwise.
+  function dispatchPluginKey(name, ch) {
+    const pt = activePluginTab();
+    if (!pt || focusZone !== 'content') return false;
+    if (typeof pt.instance.handleKey !== 'function') return false;
+    try {
+      return !!pt.instance.handleKey(name, ch);
+    } catch (e) {
+      logger.warn(`[plugin tab ${pt.tabName}] handleKey(${name}) failed: ${e.message}`);
+      return false;
+    }
+  }
+
   screen.key('left', () => {
     if (!navActive()) return;
     if (focusZone === 'tabs') { showTab(tabIdx - 1); return; }
@@ -527,7 +598,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       cfgPane = 'left';
       cfgList.focus();
       renderRight(); updateHelp();
+      return;
     }
+    dispatchPluginKey('left');
   });
 
   screen.key('right', () => {
@@ -537,7 +610,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       cfgPane = 'right';
       cfgRightFocus = 'btn';
       renderRight(); updateHelp();
+      return;
     }
+    dispatchPluginKey('right');
   });
 
   screen.key('down', () => {
@@ -558,6 +633,10 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         if ((pluginsBox.selected || 0) < 0) pluginsBox.select(0);
       } else if (tab === 'Help') {
         helpBox.focus();
+      } else {
+        // Plugin tab: let it take focus.
+        const pt = activePluginTab();
+        try { pt?.instance.onEnterFromTabs?.(); } catch {}
       }
       renderTabBar(); renderRight(); updateHelp();
       return;
@@ -590,6 +669,8 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       pluginsBox.select((pluginsBox.selected || 0) + 1); screen.render();
     } else if (tab === 'Help') {
       helpBox.scroll(1); screen.render();
+    } else {
+      dispatchPluginKey('down');
     }
   });
 
@@ -636,6 +717,8 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       const y = helpBox.getScroll?.() ?? 0;
       if (y <= 0) { focusZone = 'tabs'; renderTabBar(); updateHelp(); }
       else { helpBox.scroll(-1); screen.render(); }
+    } else {
+      dispatchPluginKey('up');
     }
   });
 
@@ -649,6 +732,10 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
       else if (tab === 'Mocks') mocksBox.focus();
       else if (tab === 'Plugins') pluginsBox.focus();
       else if (tab === 'Help') helpBox.focus();
+      else {
+        const pt = activePluginTab();
+        try { pt?.instance.onEnterFromTabs?.(); } catch {}
+      }
       renderTabBar(); renderRight(); updateHelp();
       return;
     }
@@ -663,7 +750,9 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
         const row = optionRows[optionsList.selected || 0];
         if (row) await openOptionEditor(row);
       }
+      return;
     }
+    dispatchPluginKey('enter');
   });
 
   screen.key(['q', 'C-c'], async () => {
@@ -1248,7 +1337,7 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
 
       let files = [];
       try {
-        files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js'));
+        files = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.js') && !f.endsWith('.tui.js'));
       } catch {}
       const names = files.map((f) => f.replace(/\.js$/, ''));
       // Preserve any enabled plugin name even if its file is missing.
@@ -1372,6 +1461,100 @@ export function createTui({ configsDir, pluginsDir, logger, onStart, onStop }) {
   // =====================================================
   //                       BOOT
   // =====================================================
+
+  // Recompute which plugin tabs are visible based on the currently-selected
+  // config's "plugins" list. Called from renderRight() and after the active
+  // proxy is started/stopped.
+  function recomputeTabs() {
+    const cfg = currentConfig()?.config;
+    const visible = pluginTabs
+      .filter((t) => {
+        try { return !!t.instance.isEnabled?.(cfg); } catch { return false; }
+      })
+      .map((t) => t.tabName);
+    const newTabs = [...STATIC_LEFT_TABS, ...visible, ...STATIC_RIGHT_TABS];
+    if (newTabs.length === TABS.length && newTabs.every((n, i) => n === TABS[i])) return;
+    const currentName = TABS[tabIdx];
+    TABS = newTabs;
+    let nextIdx = TABS.indexOf(currentName);
+    if (nextIdx === -1) {
+      if (focusZone === 'content') focusZone = 'tabs';
+      nextIdx = Math.min(tabIdx, TABS.length - 1);
+      if (nextIdx < 0) nextIdx = 0;
+      showTab(nextIdx);
+    } else {
+      tabIdx = nextIdx;
+      renderTabBar();
+    }
+  }
+
+  // ---------- discover & register plugin TUI extensions ----------
+  // Convention: any file matching `<name>.tui.js` inside `pluginsDir` may
+  // export a default object describing a TUI tab:
+  //   {
+  //     tabName: 'Bucket',
+  //     isEnabled(cfg) -> boolean,
+  //     build({ screen, page, helpers }) -> instance
+  //   }
+  // The returned instance may expose:
+  //   onShow(entry?), onHide(), onEnterFromTabs(),
+  //   handleKey(name, ch) -> boolean,
+  //   renderFrames(isActive),
+  //   help() -> string,
+  //   isEnabled(cfg) -> boolean       (mirrors module-level isEnabled)
+  const pluginHelpers = {
+    blessed,
+    logger,
+    pluginsDir,
+    configsDir,
+    getConfigEntry: () => currentConfig(),
+    saveConfigEntry: () => saveCurrentConfig(),
+    restartIfActive: (entry) => restartIfActive(entry || currentConfig()),
+    reloadConfigs: () => loadConfigs(),
+    promptValue,
+    promptChoice,
+    popupBox,
+    pushPopup: () => { popupCount += 1; },
+    popPopup: () => { setImmediate(() => { popupCount = Math.max(0, popupCount - 1); }); },
+    leaveContentFocus: () => {
+      focusZone = 'tabs';
+      renderTabBar();
+      updateHelp();
+    },
+    requestRender: () => screen.render(),
+    requestHelpRefresh: () => updateHelp(),
+    POPUP_BG, INPUT_BG, INPUT_FG,
+  };
+
+  if (fs.existsSync(pluginsDir)) {
+    const tuiFiles = fs.readdirSync(pluginsDir).filter((f) => f.endsWith('.tui.js'));
+    for (const file of tuiFiles) {
+      const full = path.join(pluginsDir, file);
+      try {
+        const mod = await import(url.pathToFileURL(full).href);
+        const exp = mod.default ?? mod;
+        if (!exp || typeof exp !== 'object') continue;
+        if (!exp.tabName || typeof exp.tabName !== 'string') continue;
+        const page = createPluginPage();
+        pages[exp.tabName] = page;
+        let instance;
+        if (typeof exp.build === 'function') {
+          instance = await exp.build({ screen, page, helpers: pluginHelpers });
+        } else {
+          instance = {};
+        }
+        // Surface the module-level isEnabled if instance didn't provide one.
+        if (typeof instance.isEnabled !== 'function' && typeof exp.isEnabled === 'function') {
+          instance.isEnabled = exp.isEnabled;
+        }
+        pluginTabs.push({ tabName: exp.tabName, instance, page });
+        logger.info(`[tui] plugin tab registered: ${exp.tabName}`);
+      } catch (e) {
+        logger.warn(`[tui] failed to load plugin tab ${file}: ${e.message}`);
+      }
+    }
+  }
+
   loadConfigs();
   showTab(0);
   renderTabBar();
