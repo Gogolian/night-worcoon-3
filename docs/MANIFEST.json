@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "description": "Tracks which source files each HTML doc page covers, plus a SHA-256 fingerprint of each source at the time the docs were last refreshed. Run `node docs/check-docs.mjs` to detect drift, then `--update` to refresh hashes after editing the affected pages.",
-  "generatedAt": "2026-04-30T20:59:13.869Z",
+  "generatedAt": "2026-04-30T21:36:22.338Z",
   "docs": {
     "docs/index.html": "Overview, quick start, project layout.",
     "docs/architecture.html": "Big picture, request lifecycle, ctx shape, module map.",
@@ -31,7 +31,7 @@
       "summary": "Blessed-based UI. Tabs: Configs / Logs / Mocks / Plugins / Help. Global keys for tab nav, start/stop, quit, reload."
     },
     "src/proxy.js": {
-      "sha256": "cfe372a1db3bf25018c598b7ee5d18e6ad3d9d597a572d01f0e499f8fcff5c75",
+      "sha256": "779c04ac5d6ae27c8b834e077d86d3e887c4bd1086c0b621ef8a861a6cff2aa0",
       "lines": 195,
       "covers": [
         "docs/architecture.html",
@@ -122,7 +122,7 @@
       "summary": "onResponse only. By default skips non-'proxy' sources; recordAll:true also captures mock/bucket/etc. Calls buildRecord then storage.save."
     },
     "configs/httpbin.json": {
-      "sha256": "6626fb1eba63237d701892b5a08686b9d018255e4214f68807c2aa15d4f5a529",
+      "sha256": "c247d855a171936fcd459e477d717472e63c1a04cb1d5fb0c3e60b95dfe34595",
       "lines": 39,
       "covers": [
         "docs/configs.html"
@@ -156,8 +156,8 @@
       "summary": "Scripts (start, start:headless), deps (blessed), optional dep (better-sqlite3), Node >=18."
     },
     "README.md": {
-      "sha256": "4217380b683ab03157626b8ea50ff7aeefbb646f775c1d2224a4fe2e3fb61f15",
-      "lines": 356,
+      "sha256": "b85a242b2a73d57da51c307a7c1d74be6ccc61805e18c40879d79838b4b99393",
+      "lines": 386,
       "covers": [
         "docs/index.html"
       ],
@@ -190,6 +190,25 @@
         "docs/plugins.html"
       ],
       "summary": "Plugin TUI tab for live request/response inspection with URL/status filters, pause/resume, clear, details, and copy-as-cURL via OSC 52."
+    },
+    "plugins/post.js": {
+      "sha256": "c01143d8bc2aca3089551d2282953d499cc4f8318a44f3d989d76eb74a137cbb",
+      "lines": 11,
+      "covers": [
+        "docs/plugins.html",
+        "docs/configs.html"
+      ],
+      "summary": "No-op runtime plugin named post; enabling it activates the companion POST TUI request-client tab."
+    },
+    "plugins/post.tui.js": {
+      "sha256": "152b5a3a22ee4eefb5f611cbf489932ef6cbd2319d5fc22e16631222d481a79d",
+      "lines": 360,
+      "covers": [
+        "docs/tui.html",
+        "docs/plugins.html",
+        "docs/configs.html"
+      ],
+      "summary": "Plugin TUI tab for sending ad-hoc HTTP requests either directly to the selected target or through localhost:<port> to exercise the plugin pipeline."
     },
     "plugins/ws-tap.js": {
       "sha256": "93c4f383bdf06e074260841772ea6d0ee2a62992d643a243c0a99ea89e7a0844",
