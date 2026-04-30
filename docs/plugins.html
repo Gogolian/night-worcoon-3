@@ -88,13 +88,14 @@ for (const p of plugins) {
         <tr><td><a href="#bucket"><code>bucket</code></a></td>  <td>In-memory CRUD store, optional persistence.</td><td><code>bucket</code></td></tr>
         <tr><td><a href="#mock"><code>mock</code></a></td>      <td>Rule-based mock / replay from recordings.</td> <td><code>mock</code> · <code>ret_rec</code> · <code>ret_rec_fallback</code></td></tr>
         <tr><td><a href="#recorder"><code>recorder</code></a></td><td>Save real upstream responses.</td>          <td>— (only observes)</td></tr>
+        <tr><td><a href="#metrics"><code>metrics</code></a></td><td>Per-route counters, latency histograms, error rates, bytes in/out. Prometheus endpoint + TUI tab.</td><td><code>metrics</code> (endpoint only)</td></tr>
         <tr><td><a href="#tap"><code>tap</code></a></td>        <td>Stream live transactions into the TUI.</td>  <td>— (only observes)</td></tr>
         <tr><td><a href="#ws-tap"><code>ws-tap</code></a></td><td>Log, mock, record, and replay WS frames.</td><td><code>ws_tap_mock</code> · <code>ws_tap_replay</code> · <code>ws_tap_drop</code></td></tr>
       </tbody>
     </table>
 
     <p>Recommended ordering when using all of them:
-    <code>["cors", "latency", "bucket", "mock", "recorder", "tap", "ws-tap"]</code>.</p>
+    <code>["metrics", "cors", "latency", "bucket", "mock", "recorder", "tap", "ws-tap"]</code>.</p>
 
     <!-- ----- cors ----- -->
 
@@ -313,6 +314,63 @@ for (const p of plugins) {
     <p>Status filters accept exact codes (<code>200</code>), classes
     (<code>2xx</code>), ranges (<code>400-499</code>), and comparisons
     (<code>&gt;=500</code>).</p>
+
+    <!-- ----- metrics ----- -->
+
+    <h2 id="metrics">metrics</h2>
+    <p>Source: <code>plugins/metrics.js</code> · TUI: <code>plugins/metrics.tui.js</code></p>
+
+    <p>Tracks per-route statistics and exposes them via a Prometheus-compatible
+    HTTP endpoint and a live TUI tab.</p>
+
+    <p>Place <code>"metrics"</code> <strong>first</strong> in
+    <code>config.plugins</code> so it observes every response, regardless of
+    which plugin short-circuited the request.</p>
+
+<pre><code>"metrics": {
+  "endpoint": "/__metrics",   // optional; default /__metrics
+  "maxSamples": 1000          // optional; rolling latency window per route
+}</code></pre>
+
+    <h3>Prometheus endpoint</h3>
+
+    <p><code>GET &lt;endpoint&gt;</code> (default <code>GET /__metrics</code>)
+    returns <code>text/plain; version=0.0.4</code> with the following
+    metrics:</p>
+
+    <table>
+      <thead><tr><th>Metric name</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>proxy_requests_total</code></td><td>counter</td><td>Total requests per route.</td></tr>
+        <tr><td><code>proxy_request_errors_total</code></td><td>counter</td><td>5xx responses per route.</td></tr>
+        <tr><td><code>proxy_bytes_in_total</code></td><td>counter</td><td>Request body bytes received per route.</td></tr>
+        <tr><td><code>proxy_bytes_out_total</code></td><td>counter</td><td>Response body bytes sent per route.</td></tr>
+        <tr><td><code>proxy_request_duration_ms</code></td><td>summary</td><td>Latency percentiles (p50/p95/p99) from the rolling window, plus a <code>_count</code> line.</td></tr>
+      </tbody>
+    </table>
+
+    <p>All metrics carry <code>method</code> and <code>path</code> labels.
+    Requests to the endpoint itself are not counted.</p>
+
+    <h3>TUI tab — Metrics</h3>
+
+    <p>When <code>metrics</code> is enabled the <strong>Metrics</strong> tab
+    appears in the TUI.  It shows a scrollable table with one row per distinct
+    <code>METHOD + path</code> combination.</p>
+
+    <table>
+      <thead><tr><th>Column</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>REQS</code></td><td>Request count since last reset (or startup).</td></tr>
+        <tr><td><code>ERR%</code></td><td>5xx error rate as a percentage.</td></tr>
+        <tr><td><code>p50 / p95 / p99</code></td><td>Latency percentiles (ms) from the plugin's rolling sample window.</td></tr>
+        <tr><td><code>IN / OUT</code></td><td>Bytes received / sent since last reset.</td></tr>
+      </tbody>
+    </table>
+
+    <p>Pressing <kbd>r</kbd> resets the displayed counters (delta mode — the
+    plugin's cumulative counters and the Prometheus endpoint are
+    unaffected).  Percentiles always reflect the full rolling window.</p>
 
     <!-- ----- ws-tap ----- -->
 
